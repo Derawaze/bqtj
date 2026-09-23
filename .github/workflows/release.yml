@@ -1,0 +1,78 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build Windows x86 release
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Configure Git line endings
+        run: git config --global core.autocrlf input
+
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Set up 32-bit MinGW
+        id: msys2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW32
+          suppress-deprecation-warnings: msystem-mingw32
+          update: true
+          install: mingw-w64-i686-gcc
+
+      - name: Restore and test
+        run: |
+          dotnet restore BqtjLauncher.sln
+          dotnet test BqtjLauncher.sln --configuration Release --no-restore --verbosity normal
+
+      - name: Verify public release legal files
+        shell: pwsh
+        run: |
+          foreach ($path in @('LICENSE', 'THIRD_PARTY_NOTICES.md')) {
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+              throw "公开发布缺少必要文件：$path"
+            }
+          }
+
+      - name: Build release archive
+        env:
+          BQTJ_MINGW32_GCC: ${{ steps.msys2.outputs.msys2-location }}\mingw32\bin\gcc.exe
+        run: |
+          $version = '${{ github.ref_name }}'.Substring(1)
+          ./tools/Publish-Release.ps1 -Version $version -OutputDirectory ./artifacts/release
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BqtjLauncher-${{ github.ref_name }}-win-x86
+          path: |
+            artifacts/release/*.zip
+            artifacts/release/*.sha256
+          if-no-files-found: error
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $archive = @(Get-ChildItem -LiteralPath artifacts/release -Filter '*.zip')
+          $checksum = @(Get-ChildItem -LiteralPath artifacts/release -Filter '*.sha256')
+          if ($archive.Count -ne 1 -or $checksum.Count -ne 1) {
+            throw '发布目录必须包含一个 ZIP 归档和一个 SHA-256 校验文件。'
+          }
+          $assets = @($archive[0].FullName, $checksum[0].FullName)
+          gh release create '${{ github.ref_name }}' $assets --generate-notes --verify-tag --draft

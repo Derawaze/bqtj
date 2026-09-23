@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  workflow-lint:
+    name: Workflow syntax
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Validate GitHub Actions workflows
+        uses: docker://rhysd/actionlint:1.7.7
+
+  verify:
+    name: Windows x86 verification
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Configure Git line endings
+        run: git config --global core.autocrlf input
+
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Set up 32-bit MinGW
+        id: msys2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW32
+          suppress-deprecation-warnings: msystem-mingw32
+          update: true
+          install: mingw-w64-i686-gcc
+
+      - name: Restore
+        run: dotnet restore BqtjLauncher.sln
+
+      - name: Verify managed formatting
+        run: dotnet format BqtjLauncher.sln --verify-no-changes --no-restore --verbosity minimal
+
+      - name: Reject tracked build output and private state
+        shell: pwsh
+        run: |
+          $forbiddenPattern = '(^|/)(artifacts|bin|obj|TestResults|coverage|logs|data)(/|$)|\.(exe|dll|pdb|zip|db|dmp|pfx|snk)$'
+          $forbidden = @(git ls-files | Where-Object { $_ -match $forbiddenPattern })
+          if ($forbidden.Count -gt 0) {
+            $forbidden | ForEach-Object { Write-Error "不应提交的生成或私有文件：$_" }
+            throw '仓库包含生成产物或本地私有状态。'
+          }
+
+      - name: Test managed modules
+        run: dotnet test BqtjLauncher.sln --configuration Release --no-restore --verbosity normal
+
+      - name: Build self-contained Windows package
+        env:
+          BQTJ_MINGW32_GCC: ${{ steps.msys2.outputs.msys2-location }}\mingw32\bin\gcc.exe
+        run: ./tools/Publish-Release.ps1 -Version 0.0.0-ci -OutputDirectory ./artifacts/ci/release
+
+      - name: Upload verification package
+        uses: actions/upload-artifact@v4
+        with:
+          name: BqtjLauncher-win-x86-${{ github.sha }}
+          path: |
+            artifacts/ci/release/*.zip
+            artifacts/ci/release/*.sha256
+          if-no-files-found: error
+          retention-days: 7
