@@ -134,6 +134,12 @@ public sealed class LauncherModuleTests
 
         public FakeSession? LastSession { get; private set; }
 
+        public Task<GamePageResolution> ResolveGamePageAsync() =>
+            Task.FromResult(new GamePageResolution(
+                new Uri("https://sbai.4399.com/4399swf/upload_swf/ftp15/linxy/20150324/gun/v3680d.htm"),
+                "3680d",
+                GamePageResolutionSource.PinnedFallback));
+
         public Task<IGameSession> StartAsync(
             GameProfile profile,
             CancellationToken cancellationToken = default)

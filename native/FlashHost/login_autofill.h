@@ -203,12 +203,34 @@ static BOOL visit_login_frames_at_url(IHTMLDocument2 *document, unsigned int dep
     return filled;
 }
 
+/* 游戏由平台按版本发布包装页（v3680d → v3690g），文件名会随更新变化，
+ * 因此这里匹配固定的 HTTPS 来源与上传路径前缀，而不是某一版文件名；
+ * 仍拒绝相似域名、非 HTTPS 页面和 4399 站内其它路径。 */
+static BOOL trusted_game_page_url(const wchar_t *url)
+{
+    static const wchar_t *accepted_hosts[] = {
+        L"https://sbai.4399.com/",
+        L"https://sda.4399.com/",
+    };
+    if (url == NULL) return FALSE;
+    for (size_t i = 0; i < ARRAYSIZE(accepted_hosts); i++)
+    {
+        size_t host_length = wcslen(accepted_hosts[i]);
+        if (wcsncmp(url, accepted_hosts[i], host_length) == 0
+            && wcsstr(url + host_length, L"upload_swf/") != NULL)
+        {
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
 /* 只在已核实的游戏包装页调用平台公开 UI 函数，参数为空，绝不将密码放进 iframe URL。 */
 static void prepare_login_ui(IHTMLDocument2 *document)
 {
     BSTR url = NULL;
     IHTMLDocument2_get_URL(document, &url);
-    BOOL trusted = login_url_matches(url, L"https://sbai.4399.com/4399swf/upload_swf/ftp15/linxy/20150324/gun/v3680d.htm");
+    BOOL trusted = trusted_game_page_url(url);
     SysFreeString(url);
     if (!trusted) return;
     IHTMLWindow2 *window = NULL;

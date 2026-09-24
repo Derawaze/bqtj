@@ -125,6 +125,15 @@ int main(void)
         || login_url_matches(L"https://ptlogin.4399.com.evil.test/ptlogin/loginFrame.do", url)
         || login_url_matches(L"http://ptlogin.4399.com/ptlogin/loginFrame.do", url)
         || login_url_matches(L"https://ptlogin.4399.com/ptlogin/loginFrame.do/other", url)) failures++;
+    /* 包装页按版本发布，来源门禁必须随版本变化，同时仍拒绝相似域名和非 HTTPS。 */
+    if (!trusted_game_page_url(L"https://sbai.4399.com/4399swf/upload_swf/ftp15/linxy/20150324/gun/v3680d.htm")
+        || !trusted_game_page_url(L"https://sbai.4399.com/4399swf/upload_swf/ftp15/linxy/20150324/gun/v3690g.htm")
+        || !trusted_game_page_url(L"https://sda.4399.com/4399swf/upload_swf/ftp15/linxy/20150324/gun/v3702c.htm")
+        || trusted_game_page_url(L"https://sbai.4399.com.evil.test/4399swf/upload_swf/gun/v3690g.htm")
+        || trusted_game_page_url(L"http://sbai.4399.com/4399swf/upload_swf/gun/v3690g.htm")
+        || trusted_game_page_url(L"https://sbai.4399.com/flash/130396.htm")
+        || trusted_game_page_url(L"https://sbai.4399.com/")
+        || trusted_game_page_url(NULL)) failures++;
     wcscpy(g_login_username, L"synthetic-A"); wcscpy(g_login_password, L"test-'quoted'");
     IHTMLDocument2 *a = fixture(L"<form action='https://ptlogin.4399.com/ptlogin/login.do?v=1'><input id='username'><input type='password' id='j-password'></form>");
     if (!a) return 2;

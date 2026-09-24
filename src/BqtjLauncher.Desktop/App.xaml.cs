@@ -76,11 +76,11 @@ public partial class App : System.Windows.Application
             var repository = new SqliteGameProfileRepository(Path.Combine(localData, "launcher.db"));
             services.AddSingleton<IGameProfileRepository>(repository);
             services.AddSingleton<IAccountEditor>(repository);
-            services.AddSingleton<IGameRuntime>(
-                new FlashGameRuntime(new FlashRuntimeOptions
-                {
-                    GamePageUri = new Uri("https://sbai.4399.com/4399swf/upload_swf/ftp15/linxy/20150324/gun/v3680d.htm"),
-                }));
+            // 游戏由平台按版本发布包装页，入口地址只能运行时解析；容器固定地址仅作离线兜底。
+            services.AddSingleton<IGamePageSource, HttpGamePageSource>();
+            services.AddSingleton<IGameRuntime>(provider => new FlashGameRuntime(
+                new FlashRuntimeOptions { GamePageUri = GamePageDefaults.PinnedGamePageUri },
+                provider.GetRequiredService<IGamePageSource>()));
             services.AddSingleton<LauncherModule>();
             services.AddSingleton<MainWindowViewModel>();
             services.AddSingleton<MainWindow>();

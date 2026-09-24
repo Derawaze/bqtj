@@ -15,6 +15,7 @@ namespace BqtjLauncher.Desktop;
 public sealed partial class MainWindowViewModel : ObservableObject
 {
     private readonly LauncherModule _launcher;
+    private readonly IGameRuntime _runtime;
     private readonly ILogger<MainWindowViewModel> _logger;
 
     [ObservableProperty]
@@ -31,9 +32,11 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public MainWindowViewModel(
         LauncherModule launcher,
+        IGameRuntime runtime,
         ILogger<MainWindowViewModel> logger)
     {
         _launcher = launcher;
+        _runtime = runtime;
         _logger = logger;
         _launcher.SessionsChanged += Launcher_SessionsChanged;
     }
@@ -43,13 +46,47 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public async Task InitializeAsync()
     {
         await RefreshAsync();
+        var gamePage = await ResolveGamePageAsync();
         var flash = FlashRuntimeDetector.Detect32Bit();
         // 环境正常时隐藏 OCX 路径等实现细节；异常时保留检测器原文以便用户排查。
         StatusText = !flash.IsAvailable
             ? flash.Message
             : Profiles.Count == 0
-                ? "准备就绪，请先新增账号。"
-                : $"准备就绪 · {Profiles.Count} 个账号";
+                ? $"准备就绪，请先新增账号。{FormatGameVersion(gamePage)}"
+                : $"准备就绪 · {Profiles.Count} 个账号{FormatGameVersion(gamePage)}";
+    }
+
+    /// <summary>
+    /// 解析平台当前发布的游戏版本。失败的细节留给面板状态而非弹窗，
+    /// 保证离线时仍可用兜底入口启动游戏。
+    /// </summary>
+    private async Task<GamePageResolution?> ResolveGamePageAsync()
+    {
+        try
+        {
+            return await _runtime.ResolveGamePageAsync();
+        }
+        catch (Exception exception)
+        {
+            LogOperationFailed(_logger, exception);
+            return null;
+        }
+    }
+
+    private static string FormatGameVersion(GamePageResolution? resolution)
+    {
+        if (resolution?.VersionLabel is null)
+        {
+            return string.Empty;
+        }
+
+        var suffix = resolution.Source switch
+        {
+            GamePageResolutionSource.OfficialPage => "（平台最新）",
+            GamePageResolutionSource.Cache => "（使用缓存版本）",
+            _ => "（兜底版本，未能读取平台版本）",
+        };
+        return $" · 游戏版本 {resolution.VersionLabel}{suffix}";
     }
 
     [RelayCommand]

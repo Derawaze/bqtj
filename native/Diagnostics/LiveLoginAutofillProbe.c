@@ -77,7 +77,8 @@ int main(void)
     type.hInstance = GetModuleHandleW(NULL); type.lpszClassName = L"BqtjLiveLoginProbe";
     RegisterClassW(&type);
     g_host_window = CreateWindowW(type.lpszClassName, L"", 0, 0, 0, 950, 600, NULL, NULL, type.hInstance, NULL);
-    wcscpy(g_page_url, L"https://sbai.4399.com/4399swf/upload_swf/ftp15/linxy/20150324/gun/v3680d.htm");
+    /* 生产入口由运行时解析平台当前版本，探针固定一版仅用于复现真实加载链。 */
+    wcscpy(g_page_url, L"https://sbai.4399.com/4399swf/upload_swf/ftp15/linxy/20150324/gun/v3690g.htm");
     wcscpy(g_login_username, L"bqtj-synthetic-not-an-account");
     wcscpy(g_login_password, L"synthetic-not-a-password");
     if (FAILED(recreate_browser())) return 5;

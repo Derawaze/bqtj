@@ -11,14 +11,62 @@ namespace BqtjLauncher.Runtime.Flash;
 public sealed class FlashGameRuntime : IGameRuntime
 {
     private readonly FlashRuntimeOptions _options;
+    private readonly IGamePageSource? _gamePages;
+    private readonly Uri _sourcePageUri;
+    private readonly Uri _pinnedGamePageUri;
+    private readonly object _resolutionGate = new();
+    private Task<GamePageResolution>? _resolution;
 
-    public FlashGameRuntime(FlashRuntimeOptions options)
+    public FlashGameRuntime(FlashRuntimeOptions options, IGamePageSource? gamePages = null)
     {
         options.Validate();
         _options = options;
+        _gamePages = gamePages;
+        _sourcePageUri = GamePageDefaults.SourcePageUri;
+        _pinnedGamePageUri = GamePageDefaults.PinnedGamePageUri;
     }
 
-    public Task<IGameSession> StartAsync(
+    public Task<GamePageResolution> GamePage
+    {
+        get
+        {
+            lock (_resolutionGate)
+            {
+                return _resolution ??= ResolveGamePageAsync();
+            }
+        }
+    }
+
+    /// <summary>
+    /// 重新解析平台当前发布的版本。面板启动时调用一次用于展示状态；
+    /// 结果只缓存在内存，不跨启动复用，因此平台发布新版本后重启启动器即可生效。
+    /// </summary>
+    public Task<GamePageResolution> ResolveGamePageAsync()
+    {
+        var resolution = ResolveGamePageCoreAsync();
+        lock (_resolutionGate)
+        {
+            _resolution = resolution;
+        }
+
+        return resolution;
+    }
+
+    private async Task<GamePageResolution> ResolveGamePageCoreAsync()
+    {
+        if (_gamePages is null)
+        {
+            return new GamePageResolution(
+                _options.GamePageUri,
+                GamePageHtml.ReadVersionLabel(_options.GamePageUri),
+                GamePageResolutionSource.PinnedFallback,
+                "未配置版本解析器。");
+        }
+
+        return await _gamePages.ResolveAsync(_sourcePageUri, _pinnedGamePageUri);
+    }
+
+    public async Task<IGameSession> StartAsync(
         GameProfile profile,
         CancellationToken cancellationToken = default)
     {
@@ -29,13 +77,15 @@ public sealed class FlashGameRuntime : IGameRuntime
             throw new InvalidOperationException(runtime.Message);
         }
 
-        var startInfo = CreateHostStartInfo(profile, _options);
+        // 每次启动都重新解析并采用当次结果，避免长期运行的面板沿用平台已下线的旧版本。
+        var gamePage = await ResolveGamePageAsync().WaitAsync(cancellationToken);
+        var startInfo = CreateHostStartInfo(profile, gamePage.GamePageUri);
         var process = Process.Start(startInfo)
             ?? throw new InvalidOperationException("无法启动独立游戏容器进程。");
-        return Task.FromResult<IGameSession>(new FlashGameProcessSession(profile.Id, process));
+        return new FlashGameProcessSession(profile.Id, process);
     }
 
-    private static ProcessStartInfo CreateHostStartInfo(GameProfile profile, FlashRuntimeOptions options)
+    private static ProcessStartInfo CreateHostStartInfo(GameProfile profile, Uri gamePageUri)
     {
         var processPath = Environment.ProcessPath
             ?? throw new InvalidOperationException("无法确定启动器进程路径。");
@@ -61,7 +111,7 @@ public sealed class FlashGameRuntime : IGameRuntime
         startInfo.ArgumentList.Add("--account-name");
         startInfo.ArgumentList.Add(profile.DisplayName);
         startInfo.ArgumentList.Add("--game-page");
-        startInfo.ArgumentList.Add(options.GamePageUri.AbsoluteUri);
+        startInfo.ArgumentList.Add(gamePageUri.AbsoluteUri);
         startInfo.ArgumentList.Add("--panel-pid");
         startInfo.ArgumentList.Add(Environment.ProcessId.ToString(CultureInfo.InvariantCulture));
         return startInfo;

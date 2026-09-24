@@ -19,12 +19,14 @@ dotnet test BqtjLauncher.sln --configuration Release
 |---|---|
 | 文案/文档 | 链接、过时状态、范围一致；不重建发行包 |
 | 账号/存储/会话 | 相关xUnit；用临时库及虚构值，不读用户库作夹具 |
+| 游戏入口版本解析 | `GamePageResolutionTests`（离线夹具）；改动镜像主机或页面解析时再用生产类跑一次实机网络探针 |
 | 登录/管道 | native/Diagnostics 中对应探针；真实账号最终行为需实机证据 |
 | 尺寸/加载/音频 | 相关逻辑或原生探针，再检查实际游戏窗口 |
 | 打包/公共运行链 | 全量测试、x86构建、ZIP验证及从发布目录启动 |
 
 回归源：LoginAutofillProbe.c、CredentialPipeProbe.c、ViewportProbe.c、NativeCommandPipeProbe.c、NativeCookieSessionProbe。
 具体命令见对应 [诊断索引](README.md#决策与诊断)。LiveLoginAutofillProbe使用虚构值，默认不提交网络登录。不要把启动成功代替具体行为验收。
+原生宿主每次改动都要重编译；本机没有32位MinGW-w64时不得把“C#测试通过”当作原生已验证。
 
 ## 构建与交付
 
