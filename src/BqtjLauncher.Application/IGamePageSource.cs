@@ -28,7 +28,7 @@ public sealed record GamePageResolution(
     string? Detail = null)
 {
     /// <summary>是否取到了平台当前发布的版本，而不是兜底值。</summary>
-    public bool IsCurrent => Source != GamePageResolutionSource.PinnedFallback;
+    public bool IsCurrent => Source == GamePageResolutionSource.OfficialPage;
 }
 
 /// <summary>

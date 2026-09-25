@@ -2,11 +2,11 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using BqtjLauncher.Application;
-using Color = System.Windows.Media.Color;
 using Brushes = System.Windows.Media.Brushes;
-using TextBox = System.Windows.Controls.TextBox;
-using CheckBox = System.Windows.Controls.CheckBox;
 using Button = System.Windows.Controls.Button;
+using CheckBox = System.Windows.Controls.CheckBox;
+using Color = System.Windows.Media.Color;
+using TextBox = System.Windows.Controls.TextBox;
 
 namespace BqtjLauncher.Runtime.Flash;
 

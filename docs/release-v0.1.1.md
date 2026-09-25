@@ -33,4 +33,4 @@ ZIP SHA256：`9c30024fbdfa05f5678d212f0979385661e74b242ddbed95dfee3511e18bfdc7`�
 
 ## 构建环境备注
 
-`tools/Publish-Release.ps1`、`tools/Build-NativeFlashHost.ps1`、`tools/Test-ReleasePackage.ps1` 以 UTF-8 无 BOM 保存且含中文串，在 Windows PowerShell 5.1 配非 UTF-8 代码页时无法解析（中文串被误读后破坏标记）。本轮按脚本内等价步骤直接执行 `gcc` 与 `dotnet publish` 并复核。修复这三个脚本的编码（加 BOM 或改用 pwsh 7）属于后续独立改动，未在本轮进行。
+`tools/Publish-Release.ps1`、`tools/Build-NativeFlashHost.ps1`、`tools/Test-ReleasePackage.ps1` 以 UTF-8 无 BOM 保存且含中文串，在 Windows PowerShell 5.1 配非 UTF-8 代码页时无法解析（中文串被误读后破坏标记）。本轮按脚本内等价步骤直接执行 `gcc` 与 `dotnet publish` 并复核。2026-09-24工作区已为这三个脚本补充UTF-8 BOM并通过Windows PowerShell 5.1语法检查；该维护不改写本发行包。

@@ -8,6 +8,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   release:
     name: Build Windows x86 release
@@ -38,12 +42,18 @@ jobs:
       - name: Restore and test
         run: |
           dotnet restore BqtjLauncher.sln
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           dotnet test BqtjLauncher.sln --configuration Release --no-restore --verbosity normal
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Verify managed formatting
+        run: dotnet format BqtjLauncher.sln --verify-no-changes --no-restore --verbosity minimal
 
       - name: Verify public release legal files
         shell: pwsh
         run: |
-          foreach ($path in @('LICENSE', 'THIRD_PARTY_NOTICES.md')) {
+          # 不擅自为项目选择开源许可证；随包必须保留第三方声明。
+          foreach ($path in @('THIRD_PARTY_NOTICES.md')) {
             if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
               throw "公开发布缺少必要文件：$path"
             }
@@ -52,8 +62,9 @@ jobs:
       - name: Build release archive
         env:
           BQTJ_MINGW32_GCC: ${{ steps.msys2.outputs.msys2-location }}\mingw32\bin\gcc.exe
+          RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          $version = '${{ github.ref_name }}'.Substring(1)
+          $version = $env:RELEASE_TAG.Substring(1)
           ./tools/Publish-Release.ps1 -Version $version -OutputDirectory ./artifacts/release
 
       - name: Upload workflow artifact
@@ -68,6 +79,8 @@ jobs:
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
         run: |
           $archive = @(Get-ChildItem -LiteralPath artifacts/release -Filter '*.zip')
           $checksum = @(Get-ChildItem -LiteralPath artifacts/release -Filter '*.sha256')
@@ -75,4 +88,18 @@ jobs:
             throw '发布目录必须包含一个 ZIP 归档和一个 SHA-256 校验文件。'
           }
           $assets = @($archive[0].FullName, $checksum[0].FullName)
-          gh release create '${{ github.ref_name }}' $assets --generate-notes --verify-tag --draft
+          $notes = "docs/release-$($env:RELEASE_TAG).md"
+          if (-not (Test-Path -LiteralPath $notes)) { throw "缺少发布说明：$notes" }
+          # 先完整上传到草稿，再公开；上传失败时不会留下缺附件的正式版本。
+          gh release view $env:RELEASE_TAG --json isDraft --jq '.isDraft' 1>$env:RUNNER_TEMP/release-draft.txt 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            if ((Get-Content $env:RUNNER_TEMP/release-draft.txt -Raw).Trim() -ne 'true') {
+              throw '该版本已公开，拒绝覆盖发行产物。'
+            }
+            gh release upload $env:RELEASE_TAG $assets --clobber
+          } else {
+            gh release create $env:RELEASE_TAG $assets --notes-file $notes --verify-tag --draft
+          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          gh release edit $env:RELEASE_TAG --draft=false --latest
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

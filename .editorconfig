@@ -16,3 +16,7 @@ dotnet_diagnostic.IDE0005.severity = warning
 [*.{md,json,yml,yaml}]
 indent_style = space
 indent_size = 2
+
+# Windows PowerShell 5.1 needs BOM to read Chinese script text.
+[*.ps1]
+charset = utf-8-bom

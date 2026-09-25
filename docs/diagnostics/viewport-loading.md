@@ -22,3 +22,9 @@ gcc -DUNICODE -o artifacts/ViewportProbe.exe native/Diagnostics/ViewportProbe.c 
 ```
 
 使用x86 GCC；探针只创建自己的隐藏窗口，不操作用户窗口，不访问网络。
+
+## 2026-09-25：150%仍为左上角100%的根因
+
+现场原生客户区1425×899，浏览器光学倍率224（系统DPI150%），Flash窗口1419×896，但Flash属性ScaleMode=3/NoScale、AlignMode=5/左上。仅修改为ScaleMode=0/ShowAll、AlignMode=0后，保留窗口立即等比填充，不需刷新或重新登录。
+
+update_browser_viewport在resize/scale/show时校准当前文档flashgame的这两个属性，只在值不正确时写入，不重复加载SWF。离线StartupZoomProbe创建真实Flash控件并设为3/5，旧代码失败，新代码通过；四组ViewportProbe通过。探针需与生产一致使用链接参数 -Wl,--disable-nxcompat,--disable-dynamicbase，并安装32位Flash。空白浏览器倍率正确不能替代Flash内容缩放检查。战斗点击、切关及跨屏仍未覆盖。

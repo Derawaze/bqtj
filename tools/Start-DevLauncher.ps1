@@ -1,5 +1,8 @@
-param(
-    [switch] $NoBuild
+﻿param(
+    [switch] $NoBuild,
+    [switch] $BuildOnly,
+    [switch] $PassThru,
+    [string] $CompilerPath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -12,14 +15,14 @@ $slotDirectories = @(
 )
 
 function Get-RunningExecutablePaths {
-    @(Get-Process -Name 'BqtjLauncher.Desktop' -ErrorAction SilentlyContinue | ForEach-Object {
+    @(Get-Process -Name 'BqtjLauncher.Desktop', 'BqtjNativeFlashHost' -ErrorAction SilentlyContinue | ForEach-Object {
         try { $_.Path } catch { $null }
     } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
 }
 
 function Get-LatestBuiltSlot {
     $candidates = $slotDirectories | ForEach-Object {
-        $candidate = Join-Path $_ 'BqtjLauncher.Desktop.exe'
+        $candidate = Join-Path $_ '.preview-ready'
         if (Test-Path -LiteralPath $candidate) {
             Get-Item -LiteralPath $candidate
         }
@@ -37,7 +40,7 @@ if (-not $NoBuild) {
     $outputDirectory = $slotDirectories | Where-Object {
         $slot = $_
         -not ($runningPaths | Where-Object {
-            $_.StartsWith($slot, [StringComparison]::OrdinalIgnoreCase)
+            $_.StartsWith($slot + '\', [StringComparison]::OrdinalIgnoreCase)
         })
     } | Select-Object -First 1
 
@@ -45,8 +48,12 @@ if (-not $NoBuild) {
         throw 'Both development slots are currently running. Close one development launcher and retry.'
     }
 
+    # 成功标记只在所有输出完成后写入，失败构建不能被-NoBuild选为最新版本。
+    $readyPath = Join-Path $outputDirectory '.preview-ready'
+    if (Test-Path -LiteralPath $readyPath) { Remove-Item -LiteralPath $readyPath }
+
     $nativeOutputDirectory = Join-Path $repositoryRoot 'artifacts\native'
-    & (Join-Path $PSScriptRoot 'Build-NativeFlashHost.ps1') -OutputDirectory $nativeOutputDirectory
+    & (Join-Path $PSScriptRoot 'Build-NativeFlashHost.ps1') -OutputDirectory $nativeOutputDirectory -CompilerPath $CompilerPath
     if ($LASTEXITCODE -ne 0) {
         throw "Native Flash host build failed with exit code $LASTEXITCODE."
     }
@@ -60,6 +67,7 @@ if (-not $NoBuild) {
         -LiteralPath (Join-Path $nativeOutputDirectory 'BqtjNativeFlashHost.exe') `
         -Destination $outputDirectory `
         -Force
+    [IO.File]::WriteAllText($readyPath, [DateTimeOffset]::UtcNow.ToString('o'))
 }
 else {
     $outputDirectory = Get-LatestBuiltSlot
@@ -71,5 +79,10 @@ if (-not (Test-Path -LiteralPath $executablePath)) {
     throw "Debug executable was not found: $executablePath"
 }
 
-Start-Process -FilePath $executablePath -WorkingDirectory $outputDirectory
-"Started Debug launcher from rotating slot: $executablePath"
+if ($BuildOnly) {
+    "Built preview: $executablePath"
+    return
+}
+$launched = Start-Process -FilePath $executablePath -WorkingDirectory $outputDirectory -PassThru
+Write-Host "Started Debug launcher from rotating slot: $executablePath"
+if ($PassThru) { $launched } else { $launched.Dispose() }

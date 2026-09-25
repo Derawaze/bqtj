@@ -1,4 +1,3 @@
-using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -106,6 +105,10 @@ public sealed class GamePageResolver
     public bool TryMapToPlayableHost(Uri officialUri, out Uri playableUri)
     {
         playableUri = officialUri;
+        if (!GamePageHtml.TryValidate(officialUri.AbsoluteUri, out _))
+        {
+            return false;
+        }
         if (officialUri.Host.Equals(_mirrorHost, StringComparison.OrdinalIgnoreCase))
         {
             return true;
@@ -156,7 +159,7 @@ public sealed class GamePageResolver
 }
 
 /// <summary>
-/// 解析结果的本地缓存，与运行偏好同目录、同风格（临时文件原子替换 + 跨进程命名互斥）。
+/// 解析结果的本地缓存，以独立临时文件原子替换，避免读到半写入内容。
 /// </summary>
 public sealed class GamePageCache : IGamePageCache
 {

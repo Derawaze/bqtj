@@ -185,6 +185,51 @@ static void apply_page_zoom(void)
     if (SUCCEEDED(result)) g_applied_zoom_percentage = V_I4(&zoom);
 }
 
+/* SWF可将Stage设为NoScale/左上对齐，光学缩放只扩大控件而不放大游戏。
+ * 仅当属性不符合等比居中时修正；不调用Zoom方法、不重载游戏。 */
+static void ensure_flash_fit_property(IDispatch *flash, wchar_t *name)
+{
+    DISPID member, put = DISPID_PROPERTYPUT;
+    if (FAILED(IDispatch_GetIDsOfNames(flash, &IID_NULL, &name, 1, LOCALE_USER_DEFAULT, &member))) return;
+    VARIANT value; VariantInit(&value);
+    DISPPARAMS read = {0};
+    HRESULT hr = IDispatch_Invoke(flash, member, &IID_NULL, LOCALE_USER_DEFAULT,
+        DISPATCH_PROPERTYGET, &read, &value, NULL, NULL);
+    BOOL already_fit = SUCCEEDED(hr) && SUCCEEDED(VariantChangeType(&value, &value, 0, VT_I4)) && V_I4(&value) == 0;
+    VariantClear(&value);
+    if (already_fit) return;
+    V_VT(&value) = VT_I4; V_I4(&value) = 0;
+    DISPPARAMS write = {&value, &put, 1, 1};
+    IDispatch_Invoke(flash, member, &IID_NULL, LOCALE_USER_DEFAULT,
+        DISPATCH_PROPERTYPUT, &write, NULL, NULL, NULL);
+}
+
+/* 每次从当前文档查找控件，避免刷新后持有旧Flash对象；尚未创建时直接返回。 */
+static void fit_flash_content(void)
+{
+    if (!g_browser) return;
+    IDispatch *dispatch = NULL, *flash = NULL;
+    IHTMLDocument3 *document = NULL;
+    IHTMLElement *element = NULL;
+    IHTMLObjectElement *object = NULL;
+    IWebBrowser2_get_Document(g_browser, &dispatch);
+    if (dispatch) IDispatch_QueryInterface(dispatch, &IID_IHTMLDocument3, (void **)&document);
+    BSTR id = SysAllocString(L"flashgame");
+    if (document && id) IHTMLDocument3_getElementById(document, id, &element);
+    if (element) IHTMLElement_QueryInterface(element, &IID_IHTMLObjectElement, (void **)&object);
+    if (object) IHTMLObjectElement_get_object(object, &flash);
+    if (flash) {
+        ensure_flash_fit_property(flash, L"ScaleMode"); /* 0=ShowAll，保留游戏比例。 */
+        ensure_flash_fit_property(flash, L"AlignMode"); /* 0=居中，剩余空间留黑边。 */
+        IDispatch_Release(flash);
+    }
+    SysFreeString(id);
+    if (object) IHTMLObjectElement_Release(object);
+    if (element) IHTMLElement_Release(element);
+    if (document) IHTMLDocument3_Release(document);
+    if (dispatch) IDispatch_Release(dispatch);
+}
+
 /* 原生客户区是唯一布局依据：最大化、全屏、还原和跨 DPI resize 共用这条路径。
  * IE 光学缩放只接受整数百分比，先向下量化再居中，避免四舍五入裁掉游戏边缘。 */
 static void update_browser_viewport(void)
@@ -200,6 +245,7 @@ static void update_browser_viewport(void)
     MoveWindow(g_browser_window, (width - game_width) / 2, (height - game_height) / 2,
         game_width, game_height, TRUE);
     apply_page_zoom();
+    fit_flash_content();
     InvalidateRect(g_host_window, NULL, TRUE);
 }
 

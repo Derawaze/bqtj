@@ -1,6 +1,5 @@
 using System.IO;
 using System.Net.Http;
-using BqtjLauncher.Application;
 using BqtjLauncher.Runtime.Flash;
 
 namespace BqtjLauncher.Application.Tests;
@@ -64,6 +63,31 @@ public sealed class GamePageResolutionTests
         Assert.Equal("3690g", GamePageHtml.ReadVersionLabel(pinned));
     }
 
+    [Theory]
+    [InlineData("https://sbai.4399.com/other/upload_swf/gun/v3690g.htm")]
+    [InlineData("https://sbai.4399.com/4399swf/upload_swf/ftp15/linxy/20150324/gun/prefixv3690g.htm")]
+    [InlineData("https://sbai.4399.com/4399swf/upload_swf/ftp15/linxy/20150324/gun/v3690.swf")]
+    [InlineData("https://user@sbai.4399.com/4399swf/upload_swf/ftp15/linxy/20150324/gun/v3690g.htm")]
+    [InlineData("https://sbai.4399.com:444/4399swf/upload_swf/ftp15/linxy/20150324/gun/v3690g.htm")]
+    public void RejectsOtherResourcesAndNonstandardAuthority(string candidate)
+    {
+        Assert.False(GamePageHtml.TryValidate(candidate, out _));
+        var resolver = new GamePageResolver((_, _) => Task.FromResult<string?>(null));
+        Assert.False(resolver.TryMapToPlayableHost(new Uri(candidate), out _));
+    }
+
+    [Fact]
+    public void SkipsUnrelatedIframeAndDecodesQueryEntities()
+    {
+        const string html = """
+            <iframe src='https://sbai.4399.com/other/upload_swf/v9999.htm'></iframe>
+            <iframe src='https://sda.4399.com/4399swf/upload_swf/ftp15/linxy/20150324/gun/v3702c.htm?a=1&amp;b=2'></iframe>
+            """;
+        Assert.True(GamePageHtml.TryExtractEntryUri(html, out var entry));
+        Assert.Equal("3702c", GamePageHtml.ReadVersionLabel(entry));
+        Assert.Equal("?a=1&b=2", entry.Query);
+    }
+
     [Fact]
     public async Task UsesOfficialVersionAndMovesItToPlayableHost()
     {
@@ -123,7 +147,7 @@ public sealed class GamePageResolutionTests
 
         Assert.Equal(GamePageResolutionSource.Cache, resolution.Source);
         Assert.Equal("3690g", resolution.VersionLabel);
-        Assert.True(resolution.IsCurrent);
+        Assert.False(resolution.IsCurrent);
     }
 
     [Fact]

@@ -326,9 +326,11 @@ public sealed class FlashHostWindow : Window, IDisposable
         _gameHost = new WindowsFormsHost { Child = _surface, Visibility = Visibility.Hidden };
         _loadingText = new TextBlock
         {
-            Text = "正在加载游戏…", Foreground = WpfBrushes.LightGray,
+            Text = "正在加载游戏…",
+            Foreground = WpfBrushes.LightGray,
             HorizontalAlignment = WpfHorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center, FontSize = 16,
+            VerticalAlignment = VerticalAlignment.Center,
+            FontSize = 16,
         };
         _gameArea = new Grid { Background = new SolidColorBrush(WpfColor.FromRgb(20, 25, 34)) };
         _gameArea.Children.Add(_loadingText);

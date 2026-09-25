@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using System.Net;
 using System.Text.RegularExpressions;
 
 namespace BqtjLauncher.Application;
@@ -34,7 +35,7 @@ public static partial class GamePageHtml
     private static partial Regex PlayerUrlPattern();
 
     [GeneratedRegex(
-        "v[0-9]{3,5}[a-z]?\\.(?:htm|swf)$",
+        "^v[0-9]{3,5}[a-z]?\\.htm$",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex VersionedFileNamePattern();
 
@@ -44,8 +45,8 @@ public static partial class GamePageHtml
     private static partial Regex VersionLabelPattern();
 
     /// <summary>
-    /// 解析官方页中的游戏入口。页面结构若改版，先按 _strGamePath 取，再退化为
-    /// 直接找指向 upload_swf 的地址；两者都拿不到就返回 false 交给上层回退。
+    /// 解析官方页中的游戏入口。先校验各个iframe，页面结构若改版再按 _strGamePath 取，最后退化为
+    /// 直接找指向 upload_swf 的地址；均拿不到就返回 false 交给上层回退。
     /// </summary>
     public static bool TryExtractEntryUri(string? html, [NotNullWhen(true)] out Uri? entryUri)
     {
@@ -55,9 +56,13 @@ public static partial class GamePageHtml
             return false;
         }
 
-        if (TryValidate(FindIframeSource(html), out entryUri))
+        // 广告或其它游戏 iframe 可能排在前面，逐个校验而非只检查首个候选。
+        foreach (Match match in IframePattern().Matches(html))
         {
-            return true;
+            if (TryValidate(match.Groups["url"].Value, out entryUri))
+            {
+                return true;
+            }
         }
 
         foreach (Match match in GamePathPattern().Matches(html))
@@ -80,7 +85,7 @@ public static partial class GamePageHtml
     }
 
     /// <summary>
-    /// 严格校验候选地址：必须是 HTTPS 的 4399 绝对地址，路径落在上传目录内，
+    /// 严格校验候选地址：必须是 HTTPS 的 4399 绝对地址，路径落在本游戏固定资源目录内，
     /// 且文件名是版本化包装页。宁可放弃本次自动更新，也不把任意地址交给原生宿主。
     /// </summary>
     public static bool TryValidate(string? candidate, [NotNullWhen(true)] out Uri? entryUri)
@@ -93,8 +98,10 @@ public static partial class GamePageHtml
 
         if (!Uri.TryCreate(Normalize(candidate), UriKind.Absolute, out var parsed)
             || parsed.Scheme != Uri.UriSchemeHttps
+            || !parsed.IsDefaultPort || parsed.UserInfo.Length != 0
             || !AllowedHosts.Contains(parsed.Host, StringComparer.OrdinalIgnoreCase)
-            || !parsed.AbsolutePath.Contains("/upload_swf/", StringComparison.OrdinalIgnoreCase))
+            || !string.Equals(Path.GetDirectoryName(parsed.AbsolutePath)?.Replace('\\', '/'),
+                "/4399swf/upload_swf/ftp15/linxy/20150324/gun", StringComparison.OrdinalIgnoreCase))
         {
             return false;
         }
@@ -121,25 +128,10 @@ public static partial class GamePageHtml
         return match.Success ? match.Groups["version"].Value.ToLowerInvariant() : null;
     }
 
-    private static string? FindIframeSource(string html)
-    {
-        foreach (Match match in IframePattern().Matches(html))
-        {
-            var url = match.Groups["url"].Value;
-            // 官方页会同时挂统计/广告 iframe，只认装载 Flash 播放器的那个。
-            if (url.Contains("upload_swf", StringComparison.OrdinalIgnoreCase))
-            {
-                return url;
-            }
-        }
-
-        return null;
-    }
-
     /// <summary>页面里同时存在协议相对地址（//host/path），统一补成 HTTPS 再校验。</summary>
     private static string Normalize(string candidate)
     {
-        var value = candidate.Trim();
+        var value = WebUtility.HtmlDecode(candidate).Trim();
         return value.StartsWith("//", StringComparison.Ordinal) ? "https:" + value : value;
     }
 }
