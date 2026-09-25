@@ -1,4 +1,7 @@
+using System.ComponentModel;
+using System.Diagnostics;
 using System.Windows;
+using System.Windows.Navigation;
 
 namespace BqtjLauncher.Desktop;
 
@@ -52,6 +55,20 @@ public partial class MainWindow : Window
         if (result == MessageBoxResult.Yes)
         {
             await _viewModel.DeleteSelectedAsync();
+        }
+    }
+
+    /// <summary>仅响应用户主动点击，用默认浏览器打开固定项目地址。</summary>
+    private void ProjectLink_RequestNavigate(object sender, RequestNavigateEventArgs e)
+    {
+        e.Handled = true;
+        try
+        {
+            Process.Start(new ProcessStartInfo("https://github.com/Derawaze/bqtj") { UseShellExecute = true });
+        }
+        catch (Exception exception) when (exception is Win32Exception or InvalidOperationException)
+        {
+            MessageBox.Show(this, "无法打开浏览器，请手动访问 https://github.com/Derawaze/bqtj", "项目地址");
         }
     }
 }

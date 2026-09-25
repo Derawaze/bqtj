@@ -153,6 +153,8 @@
             </Border>
 
             <Border Grid.Column="2" Style="{StaticResource CardStyle}">
+                <!-- 小窗口允许纵向滚动，避免项目说明挤出可见区域。 -->
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -199,7 +201,23 @@
                                        TextWrapping="Wrap" />
                         </StackPanel>
                     </Border>
+                    <TextBlock Grid.Row="3"
+                               Margin="0,18,0,0"
+                               VerticalAlignment="Top"
+                               Foreground="{StaticResource MutedTextBrush}"
+                               FontSize="12"
+                               LineHeight="21"
+                               TextWrapping="Wrap">
+                        <Run Text="本启动器已在 GitHub 公开。如果对你有帮助，欢迎点个 Star 支持！" />
+                        <LineBreak />
+                        <Hyperlink NavigateUri="https://github.com/Derawaze/bqtj"
+                                   RequestNavigate="ProjectLink_RequestNavigate"
+                                   Foreground="#8AB8FF">
+                            <Run Text="https://github.com/Derawaze/bqtj" />
+                        </Hyperlink>
+                    </TextBlock>
                 </Grid>
+                </ScrollViewer>
             </Border>
         </Grid>
 
