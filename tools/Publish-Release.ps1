@@ -4,7 +4,9 @@
     [string] $Version,
     [string] $OutputDirectory,
     [string] $CompilerPath,
-    [switch] $NoRestore
+    [switch] $NoRestore,
+    # 热更新包只交付两个入口程序和修复说明，供用户覆盖到已解压的安装目录。
+    [switch] $HotUpdate
 )
 
 $ErrorActionPreference = 'Stop'
@@ -111,6 +113,46 @@ try {
     $licensePath = Join-Path $repositoryRoot 'LICENSE'
     if (Test-Path -LiteralPath $licensePath -PathType Leaf) {
         Copy-Item -LiteralPath $licensePath -Destination $packageDirectory -Force
+    }
+
+    if ($HotUpdate) {
+        # 热更新只覆盖两个入口程序：自包含主程序会重新解压运行库，原生宿主直接替换。
+        $hotUpdateNoticeName = 'HOTFIX-README.md'
+        $hotUpdateNoticeSource = Join-Path $PSScriptRoot 'Publish-HotUpdate.README.md'
+        # PowerShell 5.1 的 Get-Content 默认按 ANSI 读取，会把中文模板写成乱码；这里显式按 UTF-8 读。
+        $hotUpdateNotice = [System.IO.File]::ReadAllText($hotUpdateNoticeSource).
+            Replace('{{VERSION}}', $Version)
+        # PowerShell 5.1 的 -Encoding utf8 会写出带 BOM 的 UTF-8；这里显式写无 BOM 的 UTF-8。
+        [System.IO.File]::WriteAllText(
+            (Join-Path $packageDirectory $hotUpdateNoticeName),
+            $hotUpdateNotice,
+            (New-Object System.Text.UTF8Encoding($false)))
+
+        foreach ($releaseOnlyFile in @('README.md', 'THIRD_PARTY_NOTICES.md', 'LICENSE')) {
+            $releaseOnlyPath = Join-Path $packageDirectory $releaseOnlyFile
+            if (Test-Path -LiteralPath $releaseOnlyPath -PathType Leaf) {
+                Remove-Item -LiteralPath $releaseOnlyPath -Force
+            }
+        }
+
+        Compress-Archive `
+            -Path (Join-Path $packageDirectory '*') `
+            -DestinationPath $archivePath `
+            -CompressionLevel Optimal
+        $archiveHash = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
+        "$archiveHash  $([System.IO.Path]::GetFileName($archivePath))" |
+            Set-Content -LiteralPath $checksumPath -Encoding ascii -NoNewline
+
+        & (Join-Path $PSScriptRoot 'Test-HotUpdatePackage.ps1') `
+            -ArchivePath $archivePath `
+            -ChecksumPath $checksumPath
+        if ($LASTEXITCODE -ne 0) {
+            throw "热更新包清单验证失败，退出码：$LASTEXITCODE。"
+        }
+
+        "Created hot-update package: $archivePath"
+        "Created checksum: $checksumPath"
+        return
     }
 
     Compress-Archive -LiteralPath $packageDirectory -DestinationPath $archivePath -CompressionLevel Optimal

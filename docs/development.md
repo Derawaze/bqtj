@@ -24,8 +24,9 @@ dotnet test BqtjLauncher.sln --configuration Release
 | 尺寸/加载/音频 | 相关逻辑或原生探针，再检查实际游戏窗口 |
 | 打包/公共运行链 | 全量测试、x86构建、ZIP验证及从发布目录启动 |
 
-回归源：LoginAutofillProbe.c、CredentialPipeProbe.c、ViewportProbe.c、NativeCommandPipeProbe.c、NativeCookieSessionProbe。
+回归源：LoginAutofillProbe.c、CredentialPipeProbe.c、ViewportProbe.c、NativeCommandPipeProbe.c、NativeCookieSessionProbe、RecentSpeedKeyProbe.c。
 具体命令见对应 [诊断索引](README.md#决策与诊断)。LiveLoginAutofillProbe使用虚构值，默认不提交网络登录。不要把启动成功代替具体行为验收。
+RecentSpeedKeyProbe.c 是 GUI 子系统程序，用32位gcc编译后直接运行，结果写入当前目录 recent-speed-probe.log，退出码0为通过；它只验证F3钩子的上报次数，不启动浏览器。
 原生宿主每次改动都要重编译；本机没有32位MinGW-w64时不得把“C#测试通过”当作原生已验证。
 
 ## 构建与交付
@@ -33,11 +34,14 @@ dotnet test BqtjLauncher.sln --configuration Release
 ```powershell
 ./tools/Build-NativeFlashHost.ps1 -OutputDirectory ./artifacts/native
 ./tools/Publish-Release.ps1 -Version 0.1.1
+./tools/Publish-Release.ps1 -Version 0.1.4 -HotUpdate
 ```
 
 上面的0.1.1仅为下一次构建命令示例，不是已确认发布计划。新交付用新版本号，不静默覆盖已验收包；日常改动不必每次打包。
 
 发布脚本生成压缩自包含win-x86主程序、原生宿主、简版README、第三方声明及ZIP/SHA256，并验证4文件白名单和x86入口。不分发Flash、游戏、诊断程序或用户数据；不手工裁掉运行库DLL。原生依赖首次启动解压到系统临时缓存。
+
+热更新包（-HotUpdate）只打包两个入口程序和由 tools/Publish-HotUpdate.README.md 生成的 HOTFIX-README.md，供用户覆盖到已解压目录；校验由 Test-HotUpdatePackage.ps1 完成，只接受扁平结构和这三个文件。热更新说明里的 {{VERSION}} 由脚本替换，未替换会被校验拒绝。
 
 若使用 -NoRestore 且提示缺少win-x86资产，先运行：
 ```powershell
