@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Forms.Integration;
@@ -37,6 +38,8 @@ public sealed class FlashHostWindow : Window, IDisposable
     private readonly SpeedPreferenceStore _speedPreferenceStore;
     private readonly SpeedSelectionHistory _speedHistory;
     private readonly GameRuntimePreferenceStore _runtimePreferenceStore;
+    private readonly Action<string>? _reportStartupDetail;
+    private readonly Action<string>? _reportDiagnostic;
     private readonly WinFormsPanel _surface = new()
     {
         Dock = WinFormsDockStyle.Fill,
@@ -58,6 +61,8 @@ public sealed class FlashHostWindow : Window, IDisposable
     private decimal _windowScale;
     private decimal _startupAppliedScale;
     private bool _isFullScreen;
+    private bool _keyboardSwapPending;
+    private long _lastSpeedSwapTicks;
     private bool _disposed;
 
     public FlashHostWindow(
@@ -81,6 +86,10 @@ public sealed class FlashHostWindow : Window, IDisposable
         _speedPreferenceStore = new SpeedPreferenceStore(accountId);
         _speedHistory = new SpeedSelectionHistory(_speedPreferenceStore.LoadRecent());
         _runtimePreferenceStore = new GameRuntimePreferenceStore();
+        _reportStartupDetail = options.ReportStartupDetail;
+        _reportDiagnostic = options.ReportDiagnostic;
+        _reportDiagnostic?.Invoke(
+            $"容器就绪：账号={accountId:D} 已保存的上一档={_speedHistory.Previous?.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "无"}");
         _runtimePreferences = _runtimePreferenceStore.Load();
         _panelProcessId = panelProcessId;
         _baseTitle = $"爆枪突击 - {accountName}";
@@ -119,6 +128,9 @@ public sealed class FlashHostWindow : Window, IDisposable
             UpdateLayoutProbeTitle();
         };
         PreviewKeyDown += OnPreviewKeyDown;
+        // 窗口级热键在 OnSourceInitialized 注册；宿主输出行只用于现场日志。
+        _flashHost.LineObserver = line =>
+            _reportDiagnostic?.Invoke($"宿主输出：{line}");
 
         Content = BuildLayout();
     }
@@ -163,7 +175,8 @@ public sealed class FlashHostWindow : Window, IDisposable
             _surface.Handle,
             _surface.ClientSize.Width,
             _surface.ClientSize.Height,
-            _startupAppliedScale);
+            _startupAppliedScale,
+            _reportStartupDetail);
 
         _flashHost.ConfigureCredential(_credential);
         _flashHost.SetMuted(_runtimePreferences.IsMuted);
@@ -191,6 +204,64 @@ public sealed class FlashHostWindow : Window, IDisposable
         }
     }
 
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        RegisterRecentSpeedHotKey();
+    }
+
+    /// <summary>
+    /// 把 F3 注册成容器窗口热键。窗口级热键由系统在该窗口处于前台时投递 WM_HOTKEY，
+    /// 不依赖键盘焦点落在哪一个子窗口，因此游戏画面或 Flash 控件持有焦点时同样有效。
+    /// 原生宿主的线程钩子只能看到部分消息，实测在 Flash 控件取走按键时收不到，
+    /// 这里保留为兜底，两者共用同一段互换逻辑且不会互相触发。
+    /// </summary>
+    private void RegisterRecentSpeedHotKey()
+    {
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle == IntPtr.Zero)
+        {
+            _reportDiagnostic?.Invoke("F3 热键未注册：容器窗口句柄尚未创建。");
+            return;
+        }
+
+        if (RegisterHotKey(handle, RecentSpeedHotKeyId, NoRepeatModifier, VirtualKeyF3))
+        {
+            HwndSource.FromHwnd(handle)?.AddHook(OnContainerMessage);
+            _reportDiagnostic?.Invoke("F3 热键已注册（窗口级，不依赖焦点）。");
+            return;
+        }
+
+        // 注册失败（例如被其它程序占用）不阻止游戏启动，退回原生宿主钩子的旧行为。
+        _reportDiagnostic?.Invoke(
+            $"F3 热键注册失败，退回宿主钩子：win32={Marshal.GetLastWin32Error()}");
+    }
+
+    private IntPtr OnContainerMessage(IntPtr window, int message, IntPtr word, IntPtr value, ref bool handled)
+    {
+        if (message != WmHotKey || word.ToInt64() != RecentSpeedHotKeyId)
+        {
+            return IntPtr.Zero;
+        }
+
+        handled = true;
+        OnF3HotKey();
+        return IntPtr.Zero;
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool RegisterHotKey(IntPtr window, int id, uint modifiers, uint virtualKey);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool UnregisterHotKey(IntPtr window, int id);
+
+    private const int RecentSpeedHotKeyId = 0x0B03;
+    private const int WmHotKey = 0x0312;
+    private const uint NoRepeatModifier = 0x4000;
+    private const uint VirtualKeyF3 = 0x72;
+
     protected override void OnClosed(EventArgs e)
     {
         Dispose();
@@ -207,6 +278,12 @@ public sealed class FlashHostWindow : Window, IDisposable
         _disposed = true;
         _lifetime.Cancel();
         _flashHost.Dispose();
+        // 热键是系统级资源，窗口关闭时必须释放，否则同一账号再次启动容器会注册失败。
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle != IntPtr.Zero)
+        {
+            _ = UnregisterHotKey(handle, RecentSpeedHotKeyId);
+        }
         _surface.Dispose();
         // 异步的启动/刷新收尾可能仍会读取取消状态；窗口关闭时只发出取消信号，
         // 避免提前释放令牌源导致异常筛选器在关闭路径上再次抛错。
@@ -527,10 +604,60 @@ public sealed class FlashHostWindow : Window, IDisposable
         }
 
         e.Handled = true;
-        if (_speedHistory.Previous is { } previous)
+        _reportDiagnostic?.Invoke("容器窗口收到 F3（焦点在 WPF 侧）。");
+        await ApplyRecentSpeedAsync();
+    }
+
+    /// <summary>
+    /// F3 触发入口：窗口级热键与 WPF 焦点路径共用。两条路径可能在同一时刻到达，
+    /// 因此这里做去重，实际互换在 UI 线程执行。
+    /// </summary>
+    private void OnF3HotKey()
+    {
+        // 窗口热键按住时会连续投递；用一个短保护窗口避免连续跳档。
+        var now = Environment.TickCount64;
+        if (now - _lastSpeedSwapTicks < SpeedSwapGuardMilliseconds)
         {
-            await TryApplySpeedAsync(previous);
+            return;
         }
+
+        _lastSpeedSwapTicks = now;
+        _reportDiagnostic?.Invoke(
+            $"收到 F3：pending={_keyboardSwapPending} disposed={_disposed} previous={_speedHistory.Previous?.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "无"}");
+        if (_disposed || _keyboardSwapPending)
+        {
+            return;
+        }
+
+        _keyboardSwapPending = true;
+        _ = Dispatcher.InvokeAsync(
+            async () =>
+            {
+                try
+                {
+                    await ApplyRecentSpeedAsync();
+                }
+                finally
+                {
+                    _keyboardSwapPending = false;
+                }
+            });
+    }
+
+    private const long SpeedSwapGuardMilliseconds = 300;
+
+    /// <summary>把当前档位换成上一档；没有上一档时保持原样。</summary>
+    private async Task ApplyRecentSpeedAsync()
+    {
+        if (_speedHistory.Previous is not { } previous)
+        {
+            _reportDiagnostic?.Invoke("F3 互换已跳过：还没有上一档可换，请先在变速菜单里选一次档位。");
+            return;
+        }
+
+        _reportDiagnostic?.Invoke(
+            $"F3 互换：{_flashHost.Current.DisplayText} → {previous.DisplayText}");
+        await TryApplySpeedAsync(previous);
     }
 
     private WpfContextMenu CreateScaleMenu()

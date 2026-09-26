@@ -42,6 +42,16 @@ static unsigned int g_login_attempts;
 static int g_applied_zoom_percentage = 100;
 static void update_browser_viewport(void);
 
+/*
+ * 启动阶段上报：宿主在创建浏览器并同步导航前先报 start，父进程因此在
+ * IE/Flash 初始化较慢时也能区分“宿主已起来”和“宿主根本没起来”，并据此延长等待。
+ */
+static void report_stage(const char *stage)
+{
+    printf("stage %s\n", stage);
+    fflush(stdout);
+}
+
 static void log_hresult(const char *operation, HRESULT result)
 {
     fprintf(stderr, "%s failed (HRESULT=0x%08lx)\n", operation, (unsigned long)result);
@@ -700,6 +710,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, PWSTR command_line, 
     }
 
     wcsncpy(g_page_url, page, ARRAYSIZE(g_page_url) - 1);
+    /* 父窗口有效即视为宿主已经起来：先报启动阶段，再进入耗时的 IE/Flash 初始化。 */
+    report_stage("start");
     /*
      * 每个账号宿主只使用进程内 Cookie，不继承或覆盖当前用户已保存的登录态。
      * 必须在首次创建 IE/Flash 前设置且仅设置一次；刷新不能再次设置，否则会丢失会话。
@@ -768,6 +780,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, PWSTR command_line, 
         return 7;
     }
 
+    report_stage("create-browser");
     result = recreate_browser();
     if (FAILED(result))
     {

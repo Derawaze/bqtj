@@ -7,6 +7,15 @@ namespace BqtjLauncher.Runtime.Flash;
 
 internal sealed class NativeFlashHostController : IDisposable
 {
+    /// <summary>宿主最多启动次数：首次卡住后重启一次，避免把偶发卡顿直接变成启动失败。</summary>
+    private const int MaximumHostStartAttempts = 2;
+
+    /// <summary>等待宿主第一行输出（进程已起来）的上限。</summary>
+    private static readonly TimeSpan HostFirstStageTimeout = TimeSpan.FromSeconds(10);
+
+    /// <summary>IE/Flash 初始化可能受网络影响，收到 stage 后给足时间。</summary>
+    private static readonly TimeSpan HostInitializationTimeout = TimeSpan.FromSeconds(45);
+
     private readonly Uri _gamePageUri;
     private readonly bool _audioControlEnabled;
     private readonly SemaphoreSlim _responseGate = new(1, 1);
@@ -25,6 +34,12 @@ internal sealed class NativeFlashHostController : IDisposable
 
     public SpeedMultiplier Current { get; private set; } = SpeedMultiplier.Original;
 
+    /// <summary>
+    /// 宿主输出行观察口：命令执行期间由 <see cref="ReadHostLineAsync"/> 逐行回调，
+    /// 用于确认宿主回执是否真的从管道到达（用户现场没有调试器，只能靠日志）。
+    /// </summary>
+    internal Action<string>? LineObserver { get; set; }
+
     /// <summary>只通过已绑定子进程的控制管道传递限长凭据，编码避免换行注入协议。</summary>
     public void ConfigureCredential(BqtjLauncher.Application.AccountCredential? credential)
     {
@@ -35,7 +50,18 @@ internal sealed class NativeFlashHostController : IDisposable
             + ":" + Convert.ToHexString(System.Text.Encoding.Unicode.GetBytes(credential.Password)));
     }
 
-    public void Start(nint parentHandle, int width, int height, decimal initialScale)
+    /// <summary>
+    /// 启动原生宿主并等待 ready。宿主在耗时初始化前会先报 stage 行，
+    /// 因此这里按“第一次响应”和“初始化完成”分段计时，并允许一次重试：
+    /// 首次 ready 超时通常来自 IE/Flash 初始化卡住，重新拉起一个干净进程即可恢复。
+    /// </summary>
+    /// <param name="reportDetail">启动细节输出，用于写入日志排查现场问题。</param>
+    public void Start(
+        nint parentHandle,
+        int width,
+        int height,
+        decimal initialScale,
+        Action<string>? reportDetail = null)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (_process is not null)
@@ -51,6 +77,45 @@ internal sealed class NativeFlashHostController : IDisposable
                 executablePath);
         }
 
+        for (var attempt = 1; ; attempt++)
+        {
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            _process = StartHostProcess(executablePath, parentHandle);
+            reportDetail?.Invoke(
+                $"原生宿主已启动 pid={_process.Id}，等待初始化（第 {attempt} 次）。");
+            var detail = new HostStartupDetail();
+            if (TryWaitForReady(detail))
+            {
+                reportDetail?.Invoke($"原生宿主就绪，用时 {stopwatch.ElapsedMilliseconds}ms：{detail.ToSummary()}");
+                break;
+            }
+
+            StopHostProcess();
+            var reason = $"原生 Flash 宿主在 {stopwatch.ElapsedMilliseconds}ms 内没有完成初始化：{detail.ToSummary()}";
+            reportDetail?.Invoke(reason);
+            if (attempt >= MaximumHostStartAttempts)
+            {
+                throw new InvalidOperationException($"{reason}请关闭其它游戏窗口后重试，仍未恢复请附上日志反馈。");
+            }
+        }
+
+        // AppContainer 兼容性探针暂时禁用 Core Audio；正式隔离链必须由普通面板 broker 接管音频。
+        if (_audioControlEnabled)
+        {
+            // 仅在宿主确认可用后启动后台音频校准，避免初始化失败遗留监控任务。
+            _audioMute.Attach(_process!.Id);
+        }
+        foreach (var command in NativeHostStartupCommands.Create(width, height, initialScale))
+        {
+            SendCommand(command);
+        }
+        _hostWidth = width;
+        _hostHeight = height;
+        _pageScale = initialScale;
+    }
+
+    private Process StartHostProcess(string executablePath, nint parentHandle)
+    {
         var startInfo = new ProcessStartInfo
         {
             FileName = executablePath,
@@ -65,33 +130,153 @@ internal sealed class NativeFlashHostController : IDisposable
         startInfo.ArgumentList.Add(parentHandle.ToInt64().ToString(CultureInfo.InvariantCulture));
         startInfo.ArgumentList.Add("--page");
         startInfo.ArgumentList.Add(_gamePageUri.AbsoluteUri);
-
-        _process = Process.Start(startInfo)
+        return Process.Start(startInfo)
             ?? throw new InvalidOperationException("无法启动原生 Flash 宿主。");
-        var ready = _process.StandardOutput.ReadLineAsync()
-            .WaitAsync(TimeSpan.FromSeconds(10))
-            .GetAwaiter()
-            .GetResult();
-        if (!string.Equals(ready, "ready", StringComparison.Ordinal))
+    }
+
+    /// <summary>按阶段接收宿主输出，直到 ready、进程退出或超时。</summary>
+    private bool TryWaitForReady(HostStartupDetail detail)
+    {
+        var process = _process!;
+        while (true)
         {
-            var error = _process.StandardError.ReadToEnd();
-            throw new InvalidOperationException(
-                $"原生 Flash 宿主初始化失败：{(string.IsNullOrWhiteSpace(error) ? ready : error.Trim())}");
+            var lineTask = process.StandardOutput.ReadLineAsync();
+            var timeout = detail.FirstStageReceived
+                ? HostInitializationTimeout
+                : HostFirstStageTimeout;
+            if (!lineTask.Wait(timeout))
+            {
+                // 读超时后该任务仍占用 stdout 流，这里不再复用进程，交由调用方重启。
+                CollectHostStderr(detail);
+                return false;
+            }
+
+            var line = lineTask.Result;
+            if (line is null)
+            {
+                detail.ExitCode = process.HasExited ? process.ExitCode : null;
+                CollectHostStderr(detail);
+                return false;
+            }
+
+            if (ClassifyHostLine(line) == HostLineKind.Ready)
+            {
+                return true;
+            }
+
+            switch (ClassifyHostLine(line))
+            {
+                case HostLineKind.Stage:
+                    detail.FirstStageReceived = true;
+                    detail.Stages.Add(line["stage ".Length..].Trim());
+                    break;
+                default:
+                    // ready 之前的其它输出同样记录，便于判断宿主走到了哪一步。
+                    detail.OtherLines.Add(line);
+                    break;
+            }
+        }
+    }
+
+    /// <summary>启动期的宿主输出分类：就绪回执、阶段上报或普通输出。</summary>
+    internal enum HostLineKind
+    {
+        Ready,
+        Stage,
+        Other,
+    }
+
+    internal static HostLineKind ClassifyHostLine(string line)
+    {
+        if (string.Equals(line, "ready", StringComparison.Ordinal))
+        {
+            return HostLineKind.Ready;
         }
 
-        // AppContainer 兼容性探针暂时禁用 Core Audio；正式隔离链必须由普通面板 broker 接管音频。
-        if (_audioControlEnabled)
+        return line.StartsWith("stage ", StringComparison.Ordinal) && line.Length > "stage ".Length
+            ? HostLineKind.Stage
+            : HostLineKind.Other;
+    }
+
+    private void CollectHostStderr(HostStartupDetail detail)
+    {
+        try
         {
-            // 仅在宿主确认可用后启动后台音频校准，避免初始化失败遗留监控任务。
-            _audioMute.Attach(_process.Id);
+            if (_process is { HasExited: true })
+            {
+                var error = _process.StandardError.ReadToEnd();
+                if (!string.IsNullOrWhiteSpace(error))
+                {
+                    detail.Stderr = error.Trim();
+                }
+            }
         }
-        foreach (var command in NativeHostStartupCommands.Create(width, height, initialScale))
+        catch (Exception exception) when (exception is InvalidOperationException or IOException)
         {
-            SendCommand(command);
+            // 进程已被回收时读取 stderr 会失败，这不影响超时结论。
         }
-        _hostWidth = width;
-        _hostHeight = height;
-        _pageScale = initialScale;
+    }
+
+    private void StopHostProcess()
+    {
+        if (_process is null)
+        {
+            return;
+        }
+
+        try
+        {
+            if (!_process.HasExited)
+            {
+                _process.Kill(entireProcessTree: true);
+                _process.WaitForExit(2000);
+            }
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            // 进程可能刚好自行退出；重试路径不需要在这里失败。
+        }
+        finally
+        {
+            _process.Dispose();
+            _process = null;
+        }
+    }
+
+    /// <summary>宿主启动过程的现场信息，用于日志和失败提示，不含任何凭据。</summary>
+    internal sealed class HostStartupDetail
+    {
+        public bool FirstStageReceived { get; set; }
+
+        public List<string> Stages { get; } = [];
+
+        public List<string> OtherLines { get; } = [];
+
+        public string? Stderr { get; set; }
+
+        public int? ExitCode { get; set; }
+
+        public string ToSummary()
+        {
+            var parts = new List<string>();
+            parts.Add(Stages.Count == 0 ? "未收到任何启动阶段" : $"阶段={string.Join('>', Stages)}");
+            if (OtherLines.Count > 0)
+            {
+                parts.Add($"输出={string.Join('|', OtherLines)}");
+            }
+
+            if (ExitCode is { } exitCode)
+            {
+                parts.Add($"退出码={exitCode}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(Stderr))
+            {
+                parts.Add($"stderr={Stderr}");
+            }
+
+            return string.Join("；", parts);
+        }
     }
 
     /// <summary>仅调整当前原生游戏进程的音频会话，不改变系统或其他账号音量。</summary>
@@ -125,7 +310,7 @@ internal sealed class NativeFlashHostController : IDisposable
             EnsureRunning();
             await _process!.StandardInput.WriteLineAsync("reload");
             await _process.StandardInput.FlushAsync();
-            var response = await _process.StandardOutput.ReadLineAsync()
+            var response = await ReadHostLineAsync()
                 .WaitAsync(TimeSpan.FromSeconds(10));
             if (!string.Equals(response, "reload-ok", StringComparison.Ordinal))
             {
@@ -165,8 +350,8 @@ internal sealed class NativeFlashHostController : IDisposable
                 EnsureRunning();
                 await _process!.StandardInput.WriteLineAsync("display-ready");
                 await _process.StandardInput.FlushAsync(cancellationToken);
-                var response = await _process.StandardOutput.ReadLineAsync(cancellationToken)
-                    .AsTask().WaitAsync(TimeSpan.FromSeconds(10), cancellationToken);
+                var response = await ReadHostLineAsync(cancellationToken)
+                    .WaitAsync(TimeSpan.FromSeconds(10), cancellationToken);
                 if (response == "display-ready") return;
                 if (response != "display-pending") throw new InvalidOperationException("无法确认游戏加载状态。");
             }
@@ -184,7 +369,7 @@ internal sealed class NativeFlashHostController : IDisposable
             EnsureRunning();
             await _process!.StandardInput.WriteLineAsync("show");
             await _process.StandardInput.FlushAsync();
-            var response = await _process.StandardOutput.ReadLineAsync()
+            var response = await ReadHostLineAsync()
                 .WaitAsync(TimeSpan.FromSeconds(10));
             if (!string.Equals(response, "show-ok", StringComparison.Ordinal))
             {
@@ -235,7 +420,7 @@ internal sealed class NativeFlashHostController : IDisposable
         await _process!.StandardInput.WriteLineAsync(
             $"speed {multiplier.Value.ToString(CultureInfo.InvariantCulture)}");
         await _process.StandardInput.FlushAsync();
-        var response = await _process.StandardOutput.ReadLineAsync()
+        var response = await ReadHostLineAsync()
             .WaitAsync(TimeSpan.FromSeconds(10));
         if (!string.Equals(response, "speed-ok", StringComparison.Ordinal))
         {
@@ -277,6 +462,21 @@ internal sealed class NativeFlashHostController : IDisposable
 
     private bool CanSendCommand() =>
         !_disposed && _process is { HasExited: false };
+
+    /// <summary>
+    /// 读取一行宿主输出，并把每一行交给观察口（用于现场日志）。
+    /// </summary>
+    private async Task<string?> ReadHostLineAsync(CancellationToken cancellationToken = default)
+    {
+        var host = _process ?? throw new InvalidOperationException("原生 Flash 宿主尚未启动。");
+        var line = await host.StandardOutput.ReadLineAsync(cancellationToken).AsTask();
+        if (line is not null)
+        {
+            LineObserver?.Invoke(line);
+        }
+
+        return line;
+    }
 
     private void EnsureRunning()
     {

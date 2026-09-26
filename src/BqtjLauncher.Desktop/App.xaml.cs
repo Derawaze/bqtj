@@ -56,6 +56,9 @@ public partial class App : System.Windows.Application
                     new FlashRuntimeOptions
                     {
                         GamePageUri = hostRequest.GamePageUri,
+                        // 容器与面板写同一个日志文件：否则容器内的启动/快捷键诊断会被丢掉。
+                        ReportStartupDetail = message => Log.Information("{Message}", message),
+                        ReportDiagnostic = message => Log.Information("{Message}", message),
                     },
                     hostRequest.PanelProcessId,
                     hostRequest.LayoutProbeEnabled,
@@ -79,7 +82,13 @@ public partial class App : System.Windows.Application
             // 游戏由平台按版本发布包装页，入口地址只能运行时解析；容器固定地址仅作离线兜底。
             services.AddSingleton<IGamePageSource, HttpGamePageSource>();
             services.AddSingleton<IGameRuntime>(provider => new FlashGameRuntime(
-                new FlashRuntimeOptions { GamePageUri = GamePageDefaults.PinnedGamePageUri },
+                new FlashRuntimeOptions
+                {
+                    GamePageUri = GamePageDefaults.PinnedGamePageUri,
+                    // 容器启动细节与运行诊断写入日志，便于区分“宿主没起来”“IE/Flash 初始化慢”和“快捷键没送达”。
+                    ReportStartupDetail = message => Log.Information("{Message}", message),
+                    ReportDiagnostic = message => Log.Information("{Message}", message),
+                },
                 provider.GetRequiredService<IGamePageSource>()));
             services.AddSingleton<LauncherModule>();
             services.AddSingleton<MainWindowViewModel>();
