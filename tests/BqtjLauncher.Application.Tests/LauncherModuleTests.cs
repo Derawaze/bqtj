@@ -97,6 +97,31 @@ public sealed class LauncherModuleTests
         Assert.Contains(profile.Id, await launcher.GetActiveProfileIdsAsync());
     }
 
+    [Fact]
+    public async Task DisposeDoesNotWaitForStoppedUiDispatcher()
+    {
+        var runtime = new FakeRuntime();
+        var launcher = new LauncherModule(new InMemoryProfileRepository(), runtime);
+        var profile = await launcher.CreateProfileAsync("退出回归虚构账号");
+        await launcher.StartAsync(profile.Id);
+        runtime.LastSession!.CloseDelay = TimeSpan.FromMilliseconds(50);
+        var finished = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                SynchronizationContext.SetSynchronizationContext(
+                    new System.Windows.Threading.DispatcherSynchronizationContext());
+                finished.SetResult(launcher.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(2)));
+            }
+            catch (Exception exception) { finished.SetException(exception); }
+        })
+        { IsBackground = true };
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        Assert.True(await finished.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+    }
+
     private sealed class InMemoryProfileRepository : IGameProfileRepository
     {
         private readonly Dictionary<Guid, GameProfile> _items = [];
@@ -165,13 +190,15 @@ public sealed class LauncherModuleTests
 
         public int CloseCount { get; private set; }
 
+        public TimeSpan CloseDelay { get; set; }
+
         public void Activate() => ActivateCount++;
 
-        public Task CloseAsync(CancellationToken cancellationToken = default)
+        public async Task CloseAsync(CancellationToken cancellationToken = default)
         {
             CloseCount++;
+            if (CloseDelay > TimeSpan.Zero) await Task.Delay(CloseDelay, cancellationToken).ConfigureAwait(false);
             _completion.TrySetResult();
-            return Task.CompletedTask;
         }
 
         public void Complete() => _completion.TrySetResult();

@@ -1,4 +1,7 @@
 using System.Collections.ObjectModel;
+using System.Net.Http;
+using System.Reflection;
+using System.Text.Json;
 using System.Windows;
 using BqtjLauncher.Application;
 using BqtjLauncher.Domain;
@@ -17,6 +20,16 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private readonly LauncherModule _launcher;
     private readonly IGameRuntime _runtime;
     private readonly ILogger<MainWindowViewModel> _logger;
+    private readonly ILauncherUpdateSource _updates;
+
+    [ObservableProperty]
+    private string _updateStatusText = string.Empty;
+
+    [ObservableProperty]
+    private LauncherUpdate? _availableRelease;
+
+    public string CurrentLauncherVersion { get; } = typeof(MainWindowViewModel).Assembly
+        .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "开发版";
 
     [ObservableProperty]
     private string _newProfileName = string.Empty;
@@ -33,15 +46,38 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public MainWindowViewModel(
         LauncherModule launcher,
         IGameRuntime runtime,
-        ILogger<MainWindowViewModel> logger)
+        ILogger<MainWindowViewModel> logger,
+        ILauncherUpdateSource updates)
     {
         _launcher = launcher;
         _runtime = runtime;
         _logger = logger;
+        _updates = updates;
         _launcher.SessionsChanged += Launcher_SessionsChanged;
     }
 
     public ObservableCollection<ProfileItemViewModel> Profiles { get; } = [];
+
+    /// <summary>更新状态独立显示在同一底部提示框，避免覆盖游戏启动及环境错误。</summary>
+    [RelayCommand]
+    private async Task CheckForUpdatesAsync(CancellationToken cancellationToken)
+    {
+        UpdateStatusText = "正在检查启动器更新…";
+        AvailableRelease = null;
+        try
+        {
+            var release = await _updates.GetLatestAsync(cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            AvailableRelease = release;
+            UpdateStatusText = release?.Describe(CurrentLauncherVersion) ?? "暂未找到已发布的正式版本。";
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+        catch (Exception exception) when (exception is HttpRequestException or OperationCanceledException
+            or JsonException or KeyNotFoundException or InvalidOperationException)
+        {
+            UpdateStatusText = "检查更新失败，请检查网络或稍后重试；不影响启动游戏。";
+        }
+    }
 
     public async Task InitializeAsync()
     {

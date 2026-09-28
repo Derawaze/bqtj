@@ -28,4 +28,4 @@ gcc -DUNICODE -O0 -g -o artifacts/NativeCommandPipeProbe.exe native/Diagnostics/
 旧实现：`FAIL: CRT flush blocked by idle command pipe`，退出 1。
 修复后：`PASS: CRT flush completed while command pipe remained idle`，退出 0。
 
-测试与发布共用bin/obj，必须串行，避免缺失PDB等构建冲突。当前发行验证见 [首版记录](../release-v0.1.0.md)。
+测试与发布共用bin/obj，必须串行，避免缺失PDB等构建冲突。历史发行证据保留在 Git 历史与 GitHub Release。

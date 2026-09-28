@@ -52,13 +52,14 @@ if (-not $NoBuild) {
     $readyPath = Join-Path $outputDirectory '.preview-ready'
     if (Test-Path -LiteralPath $readyPath) { Remove-Item -LiteralPath $readyPath }
 
-    $nativeOutputDirectory = Join-Path $repositoryRoot 'artifacts\native'
+    $nativeOutputDirectory = Join-Path $developmentRoot 'native'
     & (Join-Path $PSScriptRoot 'Build-NativeFlashHost.ps1') -OutputDirectory $nativeOutputDirectory -CompilerPath $CompilerPath
     if ($LASTEXITCODE -ne 0) {
         throw "Native Flash host build failed with exit code $LASTEXITCODE."
     }
 
-    & dotnet build $projectPath -c Debug -r win-x86 --self-contained true -o $outputDirectory
+    $devVersion = '0.0.0-dev.' + [DateTime]::UtcNow.ToString('yyyyMMddHHmmss')
+    & dotnet build $projectPath -c Debug -r win-x86 --self-contained true -o $outputDirectory "-p:Version=$devVersion"
     if ($LASTEXITCODE -ne 0) {
         throw "Debug build failed with exit code $LASTEXITCODE."
     }

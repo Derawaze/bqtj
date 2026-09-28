@@ -24,25 +24,24 @@ dotnet test BqtjLauncher.sln --configuration Release
 | 尺寸/加载/音频 | 相关逻辑或原生探针，再检查实际游戏窗口 |
 | 打包/公共运行链 | 全量测试、x86构建、ZIP验证及从发布目录启动 |
 
-回归源：LoginAutofillProbe.c、CredentialPipeProbe.c、ViewportProbe.c、NativeCommandPipeProbe.c、NativeCookieSessionProbe、RecentSpeedKeyProbe.c。
+回归源：LoginAutofillProbe.c、CredentialPipeProbe.c、ViewportProbe.c、NativeCommandPipeProbe.c、NativeCookieSessionProbe。
 具体命令见对应 [诊断索引](README.md#决策与诊断)。LiveLoginAutofillProbe使用虚构值，默认不提交网络登录。不要把启动成功代替具体行为验收。
-RecentSpeedKeyProbe.c 是 GUI 子系统程序，用32位gcc编译后直接运行，结果写入当前目录 recent-speed-probe.log，退出码0为通过；它只验证F3钩子的上报次数，不启动浏览器。
 原生宿主每次改动都要重编译；本机没有32位MinGW-w64时不得把“C#测试通过”当作原生已验证。
 
 ## 构建与交付
 
+先阅读 [构建与版本规范](build-policy.md)，这是目录、版本和人工验收门槛的唯一规范。
+
 ```powershell
-./tools/Build-NativeFlashHost.ps1 -OutputDirectory ./artifacts/native
-./tools/Publish-Release.ps1 -Version 0.1.1
-./tools/Publish-Release.ps1 -Version 0.1.4 -HotUpdate
+./tools/Start-DevLauncher.ps1 -BuildOnly
+$devVersion = '0.0.0-dev.' + [DateTime]::UtcNow.ToString('yyyyMMddHHmmss')
+./tools/Publish-Release.ps1 -Development -Version $devVersion
+# 开发覆盖更新包：在上一条命令加 -HotUpdate；仍只输出 artifacts/dev。
+# 正式包仅在本次用户验收并下令后：
+# ./tools/Publish-Release.ps1 -ReleaseApproved -Version <已核对的新正式版本>
 ```
 
-上面的0.1.1仅为下一次构建命令示例，不是已确认发布计划。新交付用新版本号，不静默覆盖已验收包；日常改动不必每次打包。
-
-发布脚本生成压缩自包含win-x86主程序、原生宿主、简版README、第三方声明及ZIP/SHA256，并验证4文件白名单和x86入口。不分发Flash、游戏、诊断程序或用户数据；不手工裁掉运行库DLL。原生依赖首次启动解压到系统临时缓存。
-
-热更新包（-HotUpdate）只打包两个入口程序和由 tools/Publish-HotUpdate.README.md 生成的 HOTFIX-README.md，供用户覆盖到已解压目录；校验由 Test-HotUpdatePackage.ps1 完成，只接受扁平结构和这三个文件。热更新说明里的 {{VERSION}} 由脚本替换，未替换会被校验拒绝。
-
+完整包包含两个入口程序、README 和第三方声明；覆盖更新包包含两个入口程序和 HOTFIX-README.md。两种包均校验清单、x86入口及 SHA256，不分发 Flash 或用户数据。构建配置 Release 不代表允许正式发行；是否正式交付由模式与人工门槛决定。
 若使用 -NoRestore 且提示缺少win-x86资产，先运行：
 ```powershell
 dotnet restore src/BqtjLauncher.Desktop/BqtjLauncher.Desktop.csproj -r win-x86 -p:PublishSingleFile=true
@@ -52,20 +51,20 @@ dotnet restore src/BqtjLauncher.Desktop/BqtjLauncher.Desktop.csproj -r win-x86 -
 
 ```powershell
 ./tools/New-LauncherIcon.ps1
-./tools/Clear-GeneratedFiles.ps1 -KeepVersion 0.1.0
+./tools/Clear-GeneratedFiles.ps1
 ```
 
-原图保存在Desktop/Assets/icon-source.jpg。清理仅处理仓库生成目录，保留指定发行包，跳过运行中产物、疑似用户数据和重解析点；不要改用全仓库删除命令。bin/obj清理后需重新restore。
+原图保存在Desktop/Assets/icon-source.jpg。清理仅处理仓库生成目录，默认保留全部开发验收包和发行包，跳过运行中产物、疑似用户数据和重解析点；不要改用全仓库删除命令。bin/obj清理后需重新restore。
 
 ## 远程交付
 
 本地ZIP生成与公开发布是不同操作。只有用户要求公开时，才处理许可证、提交范围和远程推送；不为普通本地开发添加发布审批。
-CI工作流覆盖测试、原生构建与ZIP校验；标签工作流先上传Release草稿，成功后自动公开；必须提供docs/release-v版本号.md，已公开版本不覆盖。是否实跑成功必须有托管结果，不能以“配置存在”当作通过。
+CI工作流覆盖测试、原生构建与ZIP校验；仅在本次人工验收和发布授权后推送标签；标签工作流先上传Release草稿，成功后自动公开；必须提供docs/release-v版本号.md，已公开版本不覆盖。是否实跑成功必须有托管结果，不能以“配置存在”当作通过。
 
 
 ## 自动构建开发预览
 
-双击 tools/Start-DevPreview.cmd；编译器由 BQTJ_MINGW32_GCC 或 PATH 提供，也可将32位gcc路径作为第一个参数。当前机器已生成 artifacts/dev/Start-Preview.cmd，一键携带本机编译器路径（不入库）。
+双击 tools/Start-DevPreview.cmd；编译器由 BQTJ_MINGW32_GCC 或 PATH 提供，也可将32位gcc路径作为第一个参数。清理后本地快捷入口需按需重新生成（不入库）。
 
 保存源码后等待2秒稳定期，自动构建空闲槽位，成功后重启由该监视器启动的开发面板。游戏会中断；其他手动启动窗口和正式包不自动关闭。失败保留旧窗口；修复并保存后重试。Ctrl+C停止监视，当前预览继续运行。原生Flash不能在保留关卡状态的同时热替换，这里采用自动重建/重启。监视期间不要另行运行测试或发布，以免争用bin/obj。
 

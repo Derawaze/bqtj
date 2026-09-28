@@ -20,6 +20,29 @@ public partial class MainWindow : Window
         _accountEditor = accountEditor;
         DataContext = viewModel;
         Loaded += async (_, _) => await _viewModel.InitializeAsync();
+        // 首次显示后启动独立异步检查，不等待游戏入口解析，也不在账号容器中重复检查。
+        ContentRendered += MainWindow_ContentRendered;
+        Closed += (_, _) => _viewModel.CheckForUpdatesCommand.Cancel();
+    }
+
+    private void MainWindow_ContentRendered(object? sender, EventArgs e)
+    {
+        ContentRendered -= MainWindow_ContentRendered;
+        _viewModel.CheckForUpdatesCommand.Execute(null);
+    }
+
+    /// <summary>由用户主动打开已核实的发布页，下载交由浏览器处理。</summary>
+    private void UpdateLink_Click(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.AvailableRelease is not { } release) return;
+        try
+        {
+            Process.Start(new ProcessStartInfo(release.ReleaseUri.AbsoluteUri) { UseShellExecute = true });
+        }
+        catch (Exception exception) when (exception is Win32Exception or InvalidOperationException)
+        {
+            _viewModel.UpdateStatusText = $"无法打开浏览器，请手动访问 {release.ReleaseUri}";
+        }
     }
 
     /// <summary>新增复用编辑表单，确认后原子创建账号和凭据，取消不留记录。</summary>

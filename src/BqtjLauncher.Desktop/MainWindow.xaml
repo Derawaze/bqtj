@@ -25,6 +25,7 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <Border Width="46"
                     Height="46"
@@ -41,6 +42,8 @@
                            Foreground="{StaticResource MutedTextBrush}"
                            Text="选择账号，启动游戏" />
             </StackPanel>
+            <Button Grid.Column="2" VerticalAlignment="Center" Content="检查更新"
+                    AutomationProperties.Name="检查启动器更新" Command="{Binding CheckForUpdatesCommand}" />
         </Grid>
 
         <!-- 主工作区保持“选择账号 → 执行操作”的稳定阅读顺序。 -->
@@ -228,10 +231,26 @@
                 BorderBrush="#222D3D"
                 BorderThickness="1"
                 CornerRadius="7">
+            <StackPanel>
             <TextBlock AutomationProperties.LiveSetting="Polite"
                        Foreground="{StaticResource MutedTextBrush}"
                        Text="{Binding StatusText}"
                        TextTrimming="CharacterEllipsis" />
+            <TextBlock Text="{Binding UpdateStatusText}" TextWrapping="Wrap"
+                       AutomationProperties.LiveSetting="Polite" Foreground="{StaticResource MutedTextBrush}" />
+            <TextBlock>
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding AvailableRelease}" Value="{x:Null}">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+                <Hyperlink Click="UpdateLink_Click" Foreground="#8AB8FF">查看更新与下载</Hyperlink>
+            </TextBlock>
+            </StackPanel>
         </Border>
     </Grid>
 </Window>

@@ -64,7 +64,7 @@ jobs:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           $version = $env:RELEASE_TAG.Substring(1)
-          ./tools/Publish-Release.ps1 -Version $version -OutputDirectory ./artifacts/release
+          ./tools/Publish-Release.ps1 -Version $version -ReleaseApproved -OutputDirectory ./artifacts/release
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4

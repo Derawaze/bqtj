@@ -162,7 +162,7 @@ public sealed class LauncherModule : IAsyncDisposable
     public async Task CloseAllAsync(CancellationToken cancellationToken = default)
     {
         IGameSession[] sessions;
-        await _gate.WaitAsync(cancellationToken);
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             sessions = [.. _sessionsByProfile.Values];
@@ -174,13 +174,14 @@ public sealed class LauncherModule : IAsyncDisposable
 
         foreach (var session in sessions)
         {
-            await session.CloseAsync(cancellationToken);
+            await session.CloseAsync(cancellationToken).ConfigureAwait(false);
         }
     }
 
     public async ValueTask DisposeAsync()
     {
-        await CloseAllAsync();
+        // 释放链各层都不捕获界面上下文，避免应用退出时同步等待形成死锁。
+        await CloseAllAsync().ConfigureAwait(false);
     }
 
     private async Task<GameProfile> RequireProfileAsync(

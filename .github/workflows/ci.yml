@@ -72,14 +72,14 @@ jobs:
       - name: Build self-contained Windows package
         env:
           BQTJ_MINGW32_GCC: ${{ steps.msys2.outputs.msys2-location }}\mingw32\bin\gcc.exe
-        run: ./tools/Publish-Release.ps1 -Version 0.0.0-ci -OutputDirectory ./artifacts/ci/release
+        run: ./tools/Publish-Release.ps1 -Development -Version ("0.0.0-dev." + [DateTime]::UtcNow.ToString('yyyyMMddHHmmss'))
 
       - name: Upload verification package
         uses: actions/upload-artifact@v4
         with:
           name: BqtjLauncher-win-x86-${{ github.sha }}
           path: |
-            artifacts/ci/release/*.zip
-            artifacts/ci/release/*.sha256
+            artifacts/dev/*.zip
+            artifacts/dev/*.sha256
           if-no-files-found: error
           retention-days: 7

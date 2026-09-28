@@ -91,6 +91,7 @@ public partial class App : System.Windows.Application
                 },
                 provider.GetRequiredService<IGamePageSource>()));
             services.AddSingleton<LauncherModule>();
+            services.AddSingleton<ILauncherUpdateSource, GitHubLauncherUpdateSource>();
             services.AddSingleton<MainWindowViewModel>();
             services.AddSingleton<MainWindow>();
             _services = services.BuildServiceProvider();

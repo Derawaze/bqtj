@@ -172,12 +172,13 @@ internal sealed class FlashGameProcessSession : IGameSession
         timeout.CancelAfter(TimeSpan.FromSeconds(5));
         try
         {
-            await _process.WaitForExitAsync(timeout.Token);
+            // 面板 OnExit 会同步等待释放；退出续体不能依赖正在关闭的 WPF 消息循环。
+            await _process.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             _process.Kill(entireProcessTree: true);
-            await _process.WaitForExitAsync(cancellationToken);
+            await _process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
         }
     }
 

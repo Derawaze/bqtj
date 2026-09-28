@@ -17,7 +17,7 @@ DocumentComplete、NavigateComplete2和最多60秒、500ms间隔的就绪检查�
 
 ## 已有证据与复验
 
-用户已验收自动填充；.6/.7实机仅点击启动游戏后自动进入游戏加载及启动菜单。精简正式包的验证范围见 [交付记录](../release-v0.1.0.md)。
+用户已验收自动填充；.6/.7实机仅点击启动游戏后自动进入游戏加载及启动菜单。历史发行证据保留在 Git 历史与 GitHub Release。
 
 LoginAutofillProbe覆盖来源拒绝、占位符、手动内容保护、延迟表单以及实际ATL浏览器的单次点击、禁用按钮和其他表单按钮不提交。CredentialPipeProbe覆盖换行、引号、冒号的虚构凭据传输。LiveLoginAutofillProbe曾复现旧填充失败，修复后保持两个虚构字段五秒并回读通过；默认不提交网络登录。
 

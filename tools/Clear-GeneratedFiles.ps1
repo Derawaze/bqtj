@@ -1,12 +1,15 @@
-param([string] $KeepVersion = '0.1.0')
+﻿param([string] $KeepVersion)
 $ErrorActionPreference = 'Stop'
-if ($KeepVersion -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') { throw '版本号无效。' }
+if ($KeepVersion -and $KeepVersion -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') { throw '版本号无效。' }
 $root = (Resolve-Path -LiteralPath (Split-Path -Parent $PSScriptRoot)).Path
 $artifacts = Join-Path $root 'artifacts'
 $keep = "BqtjLauncher-v$KeepVersion-win-x86"
 $targets = @()
 if (Test-Path -LiteralPath $artifacts) {
     foreach ($item in Get-ChildItem -LiteralPath $artifacts -Force) {
+        # 默认保留全部交付包与当前开发验收现场。
+        if ($item.Name -eq 'dev') { continue }
+        if ($item.Name -eq 'release' -and -not $KeepVersion) { continue }
         if ($item.Name -eq 'release' -and $item.PSIsContainer) {
             $targets += Get-ChildItem -LiteralPath $item.FullName -Force |
                 Where-Object Name -notin @($keep, "$keep.zip", "$keep.zip.sha256")
@@ -31,10 +34,10 @@ foreach ($item in $targets) {
     $all = @($item) + $children
     if ($all | Where-Object { $_.Attributes -band [IO.FileAttributes]::ReparsePoint }) { Write-Warning "跳过重解析点：$path"; continue }
     if ($running | Where-Object { $_ -eq $path -or $_.StartsWith("$path\", [StringComparison]::OrdinalIgnoreCase) }) { Write-Warning "跳过运行中的产物：$path"; continue }
-    if ($all | Where-Object { -not $_.PSIsContainer -and $_.Extension -in @('.db','.pfx','.snk') }) { Write-Warning "跳过含用户数据的目录：$path"; continue }
+    if ($all | Where-Object { -not $_.PSIsContainer -and $_.Extension -in @('.db','.sqlite','.sqlite3','.log','.pfx','.snk','.pem','.key','.cer') }) { Write-Warning "跳过含用户数据的目录：$path"; continue }
     $bytes = ($all | Where-Object { -not $_.PSIsContainer } | Measure-Object Length -Sum).Sum
     Remove-Item -LiteralPath $path -Recurse -Force
     $removedBytes += $bytes
     $removedCount++
 }
-[pscustomobject]@{ RemovedTargets=$removedCount; RemovedBytes=$removedBytes; RemovedMiB=[Math]::Round($removedBytes/1MB,2); KeptRelease=$keep }
+[pscustomobject]@{ RemovedTargets=$removedCount; RemovedBytes=$removedBytes; RemovedMiB=[Math]::Round($removedBytes/1MB,2); KeptRelease=$(if ($KeepVersion) { $keep } else { 'all (dev and release)' }) }

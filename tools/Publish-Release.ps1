@@ -5,6 +5,8 @@
     [string] $OutputDirectory,
     [string] $CompilerPath,
     [switch] $NoRestore,
+    [switch] $Development,
+    [switch] $ReleaseApproved,
     # 热更新包只交付两个入口程序和修复说明，供用户覆盖到已解压的安装目录。
     [switch] $HotUpdate
 )
@@ -12,40 +14,43 @@
 $ErrorActionPreference = 'Stop'
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $projectPath = Join-Path $repositoryRoot 'src\BqtjLauncher.Desktop\BqtjLauncher.Desktop.csproj'
-if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
-    $OutputDirectory = Join-Path $repositoryRoot 'artifacts\release'
+# 构建模式显式分流；参数只声明授权，实际手动验收必须由操作者核对。
+if ($Development) {
+    if ($ReleaseApproved -or $Version -notmatch '^0\.0\.0-dev\.\d{14}$') {
+        throw '开发包必须使用 0.0.0-dev.<UTC时间戳>，不可声明正式发布授权。'
+    }
+    $expectedOutput = Join-Path $repositoryRoot 'artifacts\dev'
+} else {
+    if (-not $ReleaseApproved -or $Version -notmatch '^\d+\.\d+\.\d+$') {
+        throw '正式包需要用户手动验收并明确下令；核实后传入 -ReleaseApproved 和正式版本号。'
+    }
+    $expectedOutput = Join-Path $repositoryRoot 'artifacts\release'
 }
-
-$resolvedRepositoryRoot = (Resolve-Path -LiteralPath $repositoryRoot).Path
-New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
-$resolvedOutputRoot = (Resolve-Path -LiteralPath $OutputDirectory).Path
-if (-not $resolvedOutputRoot.StartsWith(
-        "$resolvedRepositoryRoot\",
-        [StringComparison]::OrdinalIgnoreCase)) {
-    throw '发布输出目录必须位于仓库内，避免覆盖仓库外的文件。'
+if ([string]::IsNullOrWhiteSpace($OutputDirectory)) { $OutputDirectory = $expectedOutput }
+$resolvedOutputRoot = [IO.Path]::GetFullPath($OutputDirectory).TrimEnd('\')
+if ($resolvedOutputRoot -ne [IO.Path]::GetFullPath($expectedOutput).TrimEnd('\')) {
+    throw '输出目录不符合构建规范：开发包仅 artifacts/dev，正式包仅 artifacts/release。'
 }
-
+# 拒绝输出路径祖先上的目录链接，防止通过重解析点写到仓库外。
+$ancestor = $resolvedOutputRoot
+while ($ancestor) {
+    if ((Test-Path -LiteralPath $ancestor) -and
+        ((Get-Item -LiteralPath $ancestor -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+        throw '输出路径包含重解析点。'
+    }
+    $ancestor = Split-Path -Parent $ancestor
+}
+New-Item -ItemType Directory -Force -Path $resolvedOutputRoot | Out-Null
 $packageName = "BqtjLauncher-v$Version-win-x86"
 $packageDirectory = Join-Path $resolvedOutputRoot $packageName
 $archivePath = Join-Path $resolvedOutputRoot "$packageName.zip"
 $checksumPath = "$archivePath.sha256"
 
-# 同版本重建时先清理它自己的临时目录，不触碰其他发布或用户数据。
-if (Test-Path -LiteralPath $packageDirectory) {
-    Remove-Item -LiteralPath $packageDirectory -Recurse -Force
+# 已生成的交付证据不可覆盖，包括开发 ZIP；重试必须先调查残留原因。
+foreach ($existing in @($packageDirectory, $archivePath, $checksumPath)) {
+    if (Test-Path -LiteralPath $existing) { throw "产物已存在，拒绝覆盖：$existing" }
 }
-if (Test-Path -LiteralPath $archivePath) {
-    Remove-Item -LiteralPath $archivePath -Force
-}
-if (Test-Path -LiteralPath $checksumPath) {
-    Remove-Item -LiteralPath $checksumPath -Force
-}
-
-$nativeDirectory = Join-Path $resolvedOutputRoot '.native'
-if (Test-Path -LiteralPath $nativeDirectory) {
-    Remove-Item -LiteralPath $nativeDirectory -Recurse -Force
-}
-
+$nativeDirectory = Join-Path $resolvedOutputRoot ('.native-' + [Guid]::NewGuid().ToString('N'))
 try {
     & (Join-Path $PSScriptRoot 'Build-NativeFlashHost.ps1') `
         -OutputDirectory $nativeDirectory `
