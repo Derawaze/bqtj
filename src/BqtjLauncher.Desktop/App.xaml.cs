@@ -34,6 +34,10 @@ public partial class App : System.Windows.Application
                     Path.Combine(localData, "logs", "launcher-.log"),
                     rollingInterval: RollingInterval.Day,
                     retainedFileCountLimit: 7,
+                    // 面板与各账号容器同时写同一日志，必须允许跨进程共享。
+                    shared: true,
+                    fileSizeLimitBytes: 5 * 1024 * 1024,
+                    rollOnFileSizeLimit: true,
                     formatProvider: CultureInfo.InvariantCulture)
                 .CreateLogger();
 

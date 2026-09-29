@@ -25,7 +25,7 @@ dotnet test BqtjLauncher.sln --configuration Release
 | 打包/公共运行链 | 全量测试、x86构建、ZIP验证及从发布目录启动 |
 
 回归源：LoginAutofillProbe.c、CredentialPipeProbe.c、ViewportProbe.c、NativeCommandPipeProbe.c、NativeCookieSessionProbe。
-具体命令见对应 [诊断索引](README.md#决策与诊断)。LiveLoginAutofillProbe使用虚构值，默认不提交网络登录。不要把启动成功代替具体行为验收。
+原因和验证入口见 [回归要点](regressions.md)。LiveLoginAutofillProbe使用虚构值，默认不提交网络登录。不要把启动成功代替具体行为验收。
 原生宿主每次改动都要重编译；本机没有32位MinGW-w64时不得把“C#测试通过”当作原生已验证。
 
 ## 构建与交付
@@ -54,7 +54,7 @@ dotnet restore src/BqtjLauncher.Desktop/BqtjLauncher.Desktop.csproj -r win-x86 -
 ./tools/Clear-GeneratedFiles.ps1
 ```
 
-原图保存在Desktop/Assets/icon-source.jpg。清理仅处理仓库生成目录，默认保留全部开发验收包和发行包，跳过运行中产物、疑似用户数据和重解析点；不要改用全仓库删除命令。bin/obj清理后需重新restore。
+原图保存在src/BqtjLauncher.Desktop/Assets/icon-source.jpg。清理仅处理仓库生成目录，默认保留全部开发验收包和发行包，跳过运行中产物、疑似用户数据和重解析点；不要改用全仓库删除命令。bin/obj清理后需重新restore。
 
 ## 远程交付
 
@@ -75,3 +75,28 @@ CI工作流覆盖测试、原生构建与ZIP校验；仅在本次人工验收和
 运行 ./tools/Measure-GameMemory.ps1，默认每2秒采样、共30次；只记录仓库内进程的PID、私有提交量、工作集和句柄数。不读账号和内存内容。比较进入游戏、切关、刷新及重启前后的私有提交量，不能以一次工作集下降判断泄漏已修复。
 
 Flash进程内存不受.NET垃圾回收管理。重启单个账号容器可以释放其进程资源但会中断关卡；不自动触发GC、清Cookie或修剪工作集。
+
+## 原生回归命令
+
+在仓库根目录、已配置32位MinGW的终端执行；输出统一放 artifacts/dev/diagnostics。仅按改动选择探针，不批量运行全部历史诊断。公开网页探针不代表真实登录通过。
+
+```powershell
+New-Item -ItemType Directory -Force artifacts/dev/diagnostics | Out-Null
+gcc -DUNICODE -O0 -o artifacts/dev/diagnostics/NativeCommandPipeProbe.exe native/Diagnostics/NativeCommandPipeProbe.c native/FlashHost/virtual_clock.c -lole32 -loleaut32 -luser32 -lgdi32 -lshell32 -lwininet -luuid
+./tools/Test-NativeCommandPipe.ps1 -ProbePath artifacts/dev/diagnostics/NativeCommandPipeProbe.exe
+gcc -DUNICODE -o artifacts/dev/diagnostics/ViewportProbe.exe native/Diagnostics/ViewportProbe.c native/FlashHost/virtual_clock.c -lole32 -loleaut32 -lshell32 -lwininet -luuid -lgdi32
+./artifacts/dev/diagnostics/ViewportProbe.exe
+gcc -DUNICODE '-Wl,--disable-nxcompat,--disable-dynamicbase' -o artifacts/dev/diagnostics/StartupZoomProbe.exe native/Diagnostics/StartupZoomProbe.c native/FlashHost/virtual_clock.c -lole32 -loleaut32 -lshell32 -lwininet -luuid -lgdi32
+./artifacts/dev/diagnostics/StartupZoomProbe.exe
+```
+
+StartupZoomProbe需要本机32位Flash，使用与生产一致的链接选项；不能仅检查空白浏览器倍率替代Flash内容尺寸验证。F3改动需用户在游戏画面、工具栏及切换窗口后分别实测。
+## 用户反馈与诊断工具
+
+面板右上角提供“打开日志目录”和“导出诊断包”。用户选择ZIP保存位置后，后台导出启动器版本、系统/运行库/架构信息及最近最多7份日志摘要；每份只取末尾2MiB。没有日志时仍可导出环境信息，文件不可读会在环境信息中记录跳过数量。
+
+摘要只保留时间、级别、固定事件类别、错误类型和有限数值，不原样复制异常正文、URL、账号信息或完整日志；不读取账号数据库或Cookie，不自动上传。用户反馈应附版本、操作步骤、发生时间和截图，必要时自行提交诊断包。不要上传整个用户数据目录或launcher.db。
+
+原始日志位于 `%LOCALAPPDATA%\BqtjLauncher\logs`，按天或达到5MiB滚动，最多保留7个文件。面板与容器显式启用共享文件写入。白名单摘要为降低信息泄露而舍弃部分细节，不能视为完整现场转储。
+
+开发侧还有 Measure-GameMemory.ps1（仅仓库内进程资源采样）与 Get-GameWaitChain.ps1（指定进程线程等待关系），未随正式包分发。测试仅使用临时虚构日志；agent不得打开或导出用户的真实日志作为测试材料。

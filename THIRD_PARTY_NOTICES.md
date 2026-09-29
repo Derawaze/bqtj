@@ -22,6 +22,6 @@ This repository references the following direct dependencies. License identifier
 | xunit | 2.9.3 | Apache-2.0 |
 | xunit.runner.visualstudio | 3.1.4 | Apache-2.0 |
 
-This project does not include or redistribute Flash Player, game resources, Speedhack/GameSpeed DLLs, or binaries from third-party launchers. Windows system libraries and the locally installed Flash ActiveX runtime are not bundled in the release archive.
+This project does not include or redistribute Flash Player, game resources. Windows system libraries and the locally installed Flash ActiveX runtime are not bundled in the release archive.
 
 Before a public release, the maintainer should retain the corresponding package license files in the release compliance record and re-run this inventory whenever dependency versions change.

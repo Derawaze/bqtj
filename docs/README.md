@@ -1,27 +1,14 @@
 # 文档导航
 
-接手只读根目录 [CONTEXT](../CONTEXT.md)、[NEXT_AGENT](../NEXT_AGENT.md) 和 [工作方式](agent-collaboration.md)，再按任务查阅。根README只介绍软件。
+接手只读 [CONTEXT](../CONTEXT.md)、[NEXT_AGENT](../NEXT_AGENT.md) 与 [工作方式](agent-collaboration.md)，其余按任务查阅。
 
-| 要找什么 | 去哪里 |
+| 内容 | 文档 |
 |---|---|
-| 当前与后续任务 | [增量任务清单](backlog.md) |
-| 构建门槛与版本号 | [构建规范](build-policy.md) |
-| 构建、测试、发布、清理 | [开发手册](development.md) |
-| 改功能应读哪些代码 | [实现地图](architecture.md) |
-| 技术选择与Cookie隔离证据 | [当前决策](decisions.md) |
-| 当前发行内容 | [v0.1.4](release-v0.1.4.md) |
+| 当前任务与反馈处理 | [任务清单](backlog.md) |
+| 构建目录、版本和人工验收门槛 | [构建规范](build-policy.md) |
+| 开发、验证、发布与清理命令 | [开发手册](development.md) |
+| 源码位置与技术选择 | [实现地图](architecture.md) |
+| 历史缺陷的有效结论与验证入口 | [回归要点](regressions.md) |
+| 当前正式版内容与交付证据 | [v0.1.4](release-v0.1.4.md) |
 
-## 决策与诊断
-
-仅在对应问题发生时读取，不逐份加载。
-
-| 问题 | 文档 |
-|---|---|
-| 登录冻结、输入卡顿 | [管道锁诊断](diagnostics/login-command-pipe-freeze.md) |
-| 自动打开、填充、提交登录 | [登录诊断](diagnostics/login-autofill.md) |
-| 全屏、最大化、加载蓝闪 | [显示诊断](diagnostics/viewport-loading.md) |
-| 切关卡住 | [卡关诊断](diagnostics/flash-next-level-stall.md) |
-| F3 变速快捷键失效 | [变速与焦点](diagnostics/speed-key-focus.md) |
-
-旧路线图、已替代方案和冲突记录已删除，不保留归档。当前任务只维护在backlog；结论变化时就地更新，不追加互相矛盾的历史段落。
-
+根README只介绍软件。THIRD_PARTY_NOTICES.md随包发布；tools/Publish-HotUpdate.README.md由打包脚本读取，两者不是可随意删除的历史工作文档。
