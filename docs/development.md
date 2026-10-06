@@ -24,9 +24,16 @@ dotnet test BqtjLauncher.sln --configuration Release
 | 尺寸/加载/音频 | 相关逻辑或原生探针，再检查实际游戏窗口 |
 | 打包/公共运行链 | 全量测试、x86构建、ZIP验证及从发布目录启动 |
 
-回归源：LoginAutofillProbe.c、CredentialPipeProbe.c、ViewportProbe.c、NativeCommandPipeProbe.c、NativeCookieSessionProbe。
+回归源：LoginAutofillProbe.c、CredentialPipeProbe.c、ViewportProbe.c、StartupZoomProbe.c、AddressSpaceProbe.c、NativeCommandPipeProbe.c、NativeCookieSessionProbe。
 具体命令见对应 [诊断索引](README.md#决策与诊断)。LiveLoginAutofillProbe使用虚构值，默认不提交网络登录。不要把启动成功代替具体行为验收。
 原生宿主每次改动都要重编译；本机没有32位MinGW-w64时不得把“C#测试通过”当作原生已验证。
+
+窗口与刷新离线验证：
+```powershell
+./tools/Test-NativeViewport.ps1 -CompilerPath <32位gcc路径>
+```
+该脚本串行验证居中布局、真实Flash像素缩放、倍率/导航重置恢复、20次刷新、高位地址与空闲管道。像素测试短暂显示自己的无焦点夹具，不读取账号或加载游戏资源；中间产物仅写入artifacts/dev/probes。
+NativeCookieSessionProbe按stage/ready协议等待启动，测试本地HTTP与唯一虚构Cookie。若沙箱写入合成Cookie报12004，需在允许写入测试Cookie的环境运行，不能当作产品会话隔离失败或跳过断言后宣称通过。
 
 ## 构建与交付
 

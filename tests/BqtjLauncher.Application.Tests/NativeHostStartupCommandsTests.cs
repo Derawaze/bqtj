@@ -5,26 +5,27 @@ namespace BqtjLauncher.Application.Tests;
 public sealed class NativeHostStartupCommandsTests
 {
     [Fact]
-    public void OriginalScaleOnlyResizesAndDoesNotTriggerOpticalZoom()
+    public void OriginalSizeOnlySendsClientPixels()
     {
-        var commands = NativeHostStartupCommands.Create(950, 600, 1m);
+        var commands = NativeHostStartupCommands.Create(950, 600);
 
         Assert.Equal(["resize 950 600"], commands);
     }
 
     [Fact]
-    public void ScaledModeResizesBeforeApplyingOpticalZoom()
+    public void ScaledSizeLeavesOpticalZoomToNativeViewport()
     {
-        var commands = NativeHostStartupCommands.Create(1425, 900, 1.5m);
+        // 旧测试把冗余 scale 命令当成契约；真实倍率现在由原生夹具验证。
+        var commands = NativeHostStartupCommands.Create(1425, 900);
 
-        Assert.Equal(["resize 1425 900", "scale 150"], commands);
+        Assert.Equal(["resize 1425 900"], commands);
     }
 
     [Fact]
-    public void ReloadResizesRecreatedBrowserBeforeReapplyingNonOriginalScale()
+    public void ReloadRestoresClientPixelsWithoutSeparateScaleState()
     {
-        var commands = NativeHostReloadCommands.Create(1425, 900, 1.5m);
+        var commands = NativeHostReloadCommands.Create(1425, 900);
 
-        Assert.Equal(["reload", "resize 1425 900", "scale 150"], commands);
+        Assert.Equal(["reload", "resize 1425 900"], commands);
     }
 }

@@ -261,6 +261,9 @@ static BOOL login_tick(IWebBrowser2 *browser)
     return g_login_done;
 }
 
+/* 顶层页面加载通知由宿主接入；登录完成后仍需通知布局，iframe 由调用方过滤。 */
+static void (*g_document_complete_callback)(IDispatch *sender);
+
 /* COM 事件对象静态存活到进程退出；解绑连接点后才销毁浏览器。 */
 static HRESULT STDMETHODCALLTYPE login_query(IDispatch *self, REFIID iid, void **result)
 {
@@ -281,6 +284,9 @@ static HRESULT STDMETHODCALLTYPE login_invoke(IDispatch *self, DISPID id, REFIID
     DISPPARAMS *args, VARIANT *result, EXCEPINFO *exception, UINT *error)
 {
     (void)self; (void)iid; (void)locale; (void)flags; (void)result; (void)exception; (void)error;
+    if (id == 259 && args && args->cArgs == 2 && V_VT(&args->rgvarg[1]) == VT_DISPATCH
+        && g_document_complete_callback)
+        g_document_complete_callback(V_DISPATCH(&args->rgvarg[1]));
     /* DocumentComplete=259。每个 iframe 完成时传入它自己的浏览器对象。 */
     if (!g_login_done && (id == 259 || id == 252) && args && args->cArgs == 2 && V_VT(&args->rgvarg[1]) == VT_DISPATCH)
     {

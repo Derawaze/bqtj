@@ -102,8 +102,20 @@ internal static class Program
 
     private static void RequireResponse(Process process, string expected)
     {
-        var actual = process.StandardOutput.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(10)).GetAwaiter().GetResult();
-        if (actual != expected) { throw new InvalidOperationException($"原生回执错误：预期 {expected}，实际 {actual}。"); }
+        // 生产宿主在 ready 前先输出 stage；旧探针误把启动进度当成错误回执。
+        var elapsed = Stopwatch.StartNew();
+        while (true)
+        {
+            var remaining = TimeSpan.FromSeconds(10) - elapsed.Elapsed;
+            if (remaining <= TimeSpan.Zero) { throw new TimeoutException("等待原生回执超时。"); }
+            var actual = process.StandardOutput.ReadLineAsync().WaitAsync(remaining).GetAwaiter().GetResult();
+            if (expected == "ready" && actual is not null && actual.StartsWith("stage ", StringComparison.Ordinal))
+            {
+                continue;
+            }
+            if (actual != expected) { throw new InvalidOperationException($"原生回执错误：预期 {expected}，实际 {actual}。"); }
+            return;
+        }
     }
 
     private static void WaitFor(Func<bool> predicate, string operation)

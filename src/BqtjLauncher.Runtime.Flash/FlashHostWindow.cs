@@ -25,6 +25,7 @@ using WpfSeparator = System.Windows.Controls.Separator;
 
 namespace BqtjLauncher.Runtime.Flash;
 
+/// <summary>承载单账号游戏、工具栏与加载层；窗口档位只改变客户区，游戏缩放交给原生宿主。</summary>
 public sealed class FlashHostWindow : Window, IDisposable
 {
     internal const int NativeGameWidth = 950;
@@ -174,7 +175,6 @@ public sealed class FlashHostWindow : Window, IDisposable
             _surface.Handle,
             _surface.ClientSize.Width,
             _surface.ClientSize.Height,
-            _startupAppliedScale,
             _reportStartupDetail);
 
         _flashHost.ConfigureCredential(_credential);
@@ -684,13 +684,13 @@ public sealed class FlashHostWindow : Window, IDisposable
         WindowState = WindowState.Normal;
         WindowStyle = WindowStyle.SingleBorderWindow;
         ResizeMode = ResizeMode.CanResize;
-        var appliedScale = await FitWindowToGameScaleAsync(scale);
-        _flashHost.SetScale(appliedScale);
+        await FitWindowToGameScaleAsync(scale);
+        SynchronizeViewport();
         UpdateScaleChecks();
     }
 
-    /// <summary>调整到请求档位；若屏幕限制尺寸，则回退到不裁切内容的最大等比倍率。</summary>
-    private async Task<decimal> FitWindowToGameScaleAsync(decimal scale)
+    /// <summary>调整到请求档位；若屏幕限制尺寸，则回退到不裁切内容的最大等比客户区。</summary>
+    private async Task FitWindowToGameScaleAsync(decimal scale)
     {
         var targetWidth = checked((int)(NativeGameWidth * scale));
         var targetHeight = checked((int)(NativeGameHeight * scale));
@@ -722,7 +722,6 @@ public sealed class FlashHostWindow : Window, IDisposable
 
         CenterOnCurrentScreen();
         UpdateLayoutProbeTitle();
-        return appliedScale;
     }
 
     /// <summary>迭代补偿 WPF 窗框与 DPI，返回最终实际客户区像素。</summary>
@@ -779,13 +778,14 @@ public sealed class FlashHostWindow : Window, IDisposable
             return;
         }
 
-        _windowScale = Math.Min(
-            (decimal)_surface.ClientSize.Width / NativeGameWidth,
-            (decimal)_surface.ClientSize.Height / NativeGameHeight);
-        _flashHost.SetScale(_windowScale);
+        SynchronizeViewport();
         UpdateScaleChecks();
         UpdateLayoutProbeTitle();
     }
+
+    /// <summary>档位切换完成后发送最终像素尺寸；补齐同尺寸切换、全屏和跨屏的布局通知。</summary>
+    private void SynchronizeViewport() =>
+        _flashHost.Resize(_surface.ClientSize.Width, _surface.ClientSize.Height);
 
     private void AddScaleMenuItem(
         WpfContextMenu menu,

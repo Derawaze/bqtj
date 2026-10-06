@@ -6,7 +6,7 @@
 $ErrorActionPreference = 'Stop'
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
-    $OutputDirectory = Join-Path $repositoryRoot 'artifacts\native'
+    $OutputDirectory = Join-Path $repositoryRoot 'artifacts\dev\native'
 }
 
 function Resolve-CompilerPath {
@@ -45,6 +45,8 @@ New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
 $source = Join-Path $repositoryRoot 'native\FlashHost\native_flash_host.c'
 $virtualClockSource = Join-Path $repositoryRoot 'native\FlashHost\virtual_clock.c'
 $output = Join-Path $OutputDirectory 'BqtjNativeFlashHost.exe'
+# Flash 长时运行会占用大量地址空间；x86 宿主启用 LAA 后在 x64 Windows 可使用最多 4GB。
+# 这增加资源加载余量，不等于释放游戏内部对象；仍需长时实玩验收。
 & $compiler `
     -std=c11 `
     -Os `
@@ -54,6 +56,7 @@ $output = Join-Path $OutputDirectory 'BqtjNativeFlashHost.exe'
     -municode `
     -mwindows `
     '-Wl,--disable-nxcompat,--disable-dynamicbase' `
+    '-Wl,--large-address-aware' `
     -o $output `
     $source `
     $virtualClockSource `
@@ -74,6 +77,8 @@ try {
     $peOffset = $reader.ReadInt32()
     $stream.Position = $peOffset + 4
     $machine = $reader.ReadUInt16()
+    $stream.Position = $peOffset + 22
+    $characteristics = $reader.ReadUInt16()
 }
 finally {
     $stream.Dispose()
@@ -81,6 +86,9 @@ finally {
 
 if ($machine -ne 0x014c) {
     throw ('原生 Flash 宿主必须是 x86 PE，实际 Machine=0x{0:X4}。' -f $machine)
+}
+if (($characteristics -band 0x20) -eq 0) {
+    throw '原生 Flash 宿主未启用大地址支持；x64 Windows 下仍会受 2GB 地址空间限制。'
 }
 
 "Built native Flash host: $output"

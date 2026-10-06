@@ -24,6 +24,7 @@
 #define WM_HOST_SHOW (WM_APP + 5)
 #define WM_HOST_CREDENTIAL (WM_APP + 6)
 #define WM_HOST_DISPLAY_READY (WM_APP + 7)
+#define WM_HOST_LAYOUT (WM_APP + 8)
 
 typedef BOOL (WINAPI *atl_ax_win_init_t)(void);
 typedef HRESULT (WINAPI *atl_ax_get_control_t)(HWND, IUnknown **);
@@ -39,8 +40,18 @@ static atl_ax_get_control_t g_atl_ax_get_control;
 static wchar_t g_page_url[2048];
 static int g_requested_zoom_percentage = 100;
 static unsigned int g_login_attempts;
-static int g_applied_zoom_percentage = 100;
 static void update_browser_viewport(void);
+
+/* 导航完成后延迟到消息循环校准，避免在 IE 的 COM 事件调用栈中重入布局。 */
+static void schedule_browser_viewport(IDispatch *sender)
+{
+    IUnknown *source = NULL, *current = NULL;
+    IDispatch_QueryInterface(sender, &IID_IUnknown, (void **)&source);
+    if (g_browser) IWebBrowser2_QueryInterface(g_browser, &IID_IUnknown, (void **)&current);
+    if (source && source == current) PostMessageW(g_host_window, WM_HOST_LAYOUT, 0, 0);
+    if (source) IUnknown_Release(source);
+    if (current) IUnknown_Release(current);
+}
 
 /*
  * 启动阶段上报：宿主在创建浏览器并同步导航前先报 start，父进程因此在
@@ -104,16 +115,19 @@ static HRESULT navigate_page(void)
     return result;
 }
 
-/* 重建浏览器控件可清除旧 Flash/IE 实例的加载状态，供“刷新游戏”可靠恢复。 */
-static HRESULT recreate_browser(void)
+/* 停止旧导航并关闭 OLE 实例，刷新时不让旧 Flash 下载与新页面同时占用资源。 */
+static void destroy_browser(void)
 {
-    g_login_done = FALSE;
-    g_login_attempts = 0;
-    g_applied_zoom_percentage = 100;
-    if (g_host_window && g_login_username[0]) SetTimer(g_host_window, 91, 500, NULL);
     detach_login_events();
     if (g_browser != NULL)
     {
+        IWebBrowser2_Stop(g_browser);
+        IOleObject *object = NULL;
+        if (SUCCEEDED(IWebBrowser2_QueryInterface(g_browser, &IID_IOleObject, (void **)&object)))
+        {
+            IOleObject_Close(object, OLECLOSE_NOSAVE);
+            IOleObject_Release(object);
+        }
         IWebBrowser2_Release(g_browser);
         g_browser = NULL;
     }
@@ -123,6 +137,15 @@ static HRESULT recreate_browser(void)
         DestroyWindow(g_browser_window);
         g_browser_window = NULL;
     }
+}
+
+/* 重建浏览器控件可清除旧 Flash/IE 实例的加载状态，保留进程内登录态。 */
+static HRESULT recreate_browser(void)
+{
+    destroy_browser();
+    g_login_done = FALSE;
+    g_login_attempts = 0;
+    if (g_host_window && g_login_username[0]) SetTimer(g_host_window, 91, 500, NULL);
 
     RECT bounds;
     GetClientRect(g_host_window, &bounds);
@@ -158,11 +181,13 @@ static HRESULT recreate_browser(void)
     }
 
     IWebBrowser2_put_Silent(g_browser, VARIANT_TRUE);
+    g_document_complete_callback = schedule_browser_viewport;
     attach_login_events(g_browser);
     update_browser_viewport();
     return navigate_page();
 }
 
+/* 读取当前文档的真实倍率；IE 导航和页面脚本都能改变倍率，不能用上次成功值作缓存。 */
 static void apply_page_zoom(void)
 {
     if (g_browser == NULL)
@@ -185,14 +210,19 @@ static void apply_page_zoom(void)
 
     /* IE 会按 DPI 缩小旧版 Flash HWND；用等比例光学缩放抵消该虚拟化。 */
     V_I4(&zoom) = (g_requested_zoom_percentage * (int)dpi + 48) / 96;
-    if (V_I4(&zoom) == g_applied_zoom_percentage) return;
-    HRESULT result = IWebBrowser2_ExecWB(
+    VARIANT actual;
+    VariantInit(&actual);
+    HRESULT result = IWebBrowser2_ExecWB(g_browser, OLECMDID_OPTICAL_ZOOM,
+        OLECMDEXECOPT_DONTPROMPTUSER, NULL, &actual);
+    BOOL unchanged = SUCCEEDED(result) && V_VT(&actual) == VT_I4 && V_I4(&actual) == V_I4(&zoom);
+    VariantClear(&actual);
+    if (unchanged) return; /* 倍率未变时仅查询，避免重复写入造成闪帧。 */
+    IWebBrowser2_ExecWB(
         g_browser,
         OLECMDID_OPTICAL_ZOOM,
         OLECMDEXECOPT_DONTPROMPTUSER,
         &zoom,
         NULL);
-    if (SUCCEEDED(result)) g_applied_zoom_percentage = V_I4(&zoom);
 }
 
 /* SWF可将Stage设为NoScale/左上对齐，光学缩放只扩大控件而不放大游戏。
@@ -588,12 +618,20 @@ static LRESULT CALLBACK host_window_proc(HWND window, UINT message, WPARAM word,
             return 0;
         }
         case WM_SIZE:
+        case WM_HOST_LAYOUT:
             update_browser_viewport();
             return 0;
 
         case WM_HOST_RESIZE:
-            MoveWindow(window, 0, 0, (int)word, (int)value, TRUE);
+        {
+            RECT bounds; GetClientRect(window, &bounds);
+            /* 同尺寸不会产生 WM_SIZE；仍需校准导航后的新文档或重设的 Flash 属性。 */
+            if (bounds.right == (int)word && bounds.bottom == (int)value)
+                update_browser_viewport();
+            else
+                MoveWindow(window, 0, 0, (int)word, (int)value, TRUE);
             return 0;
+        }
 
         case WM_HOST_RELOAD:
             if (g_atl_ax_get_control != NULL)
@@ -632,13 +670,13 @@ static LRESULT CALLBACK host_window_proc(HWND window, UINT message, WPARAM word,
 
         case WM_DPICHANGED:
             /* 仅在系统确认 DPI 变化时重应用光学缩放，避免周期调用触发 Flash 蓝闪。 */
-            apply_page_zoom();
+            update_browser_viewport();
             return 0;
 
 #ifdef WM_DPICHANGED_AFTERPARENT
         case WM_DPICHANGED_AFTERPARENT:
             /* 子窗口跟随 WPF 父窗口跨屏后会收到该消息。 */
-            apply_page_zoom();
+            update_browser_viewport();
             return 0;
 #endif
 
@@ -810,10 +848,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, PWSTR command_line, 
     detach_login_events();
     SecureZeroMemory(g_login_username, sizeof(g_login_username));
     SecureZeroMemory(g_login_password, sizeof(g_login_password));
-    if (g_browser != NULL)
-    {
-        IWebBrowser2_Release(g_browser);
-    }
+    destroy_browser();
     if (g_host_window != NULL && IsWindow(g_host_window))
     {
         DestroyWindow(g_host_window);

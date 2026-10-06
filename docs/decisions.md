@@ -6,6 +6,7 @@
 |---|---|
 | WPF / win-x86 / 本机 Flash ActiveX | 游戏依赖32位OCX，WebView2不能承载ActiveX；不分发Flash或游戏资源 |
 | 每账号独立WPF容器 + 原生Flash子进程 | 同进程多个ActiveX曾使面板崩溃；原生故障限制在该账号 |
+| x86原生宿主开启大地址支持 | 增加x64 Windows上的资源加载地址空间余量；保持32位OCX兼容，不能据此认定游戏内存泄漏已修复 |
 | 原生宿主内连续虚拟时钟 | 旧变速DLL进入.NET时触发CoreCLR崩溃，高倍率切换也曾停止刷新；不加载旧DLL |
 | 仅挂钩Flash OCX的计时导入 | 锁内先按旧倍率结算，再改变时间斜率，避免时间倒退和跳变；不改系统DLL |
 | 进程内Cookie会话 | 满足运行时多开，退出后重新登录；保存的账号密码可用于自动登录 |
@@ -25,9 +26,9 @@
 ```powershell
 dotnet build native/Diagnostics/WinInetCookieProbe -c Release
 ./native/Diagnostics/WinInetCookieProbe/bin/Release/net10.0-windows/WinInetCookieProbe.exe matrix session
-./tools/Build-NativeFlashHost.ps1 -OutputDirectory ./artifacts/native-session
+./tools/Build-NativeFlashHost.ps1 -OutputDirectory ./artifacts/dev/native-session
 dotnet build native/Diagnostics/NativeCookieSessionProbe -c Release
-./native/Diagnostics/NativeCookieSessionProbe/bin/Release/net10.0-windows/NativeCookieSessionProbe.exe ./artifacts/native-session/BqtjNativeFlashHost.exe
+./native/Diagnostics/NativeCookieSessionProbe/bin/Release/net10.0-windows/NativeCookieSessionProbe.exe ./artifacts/dev/native-session/BqtjNativeFlashHost.exe
 ```
 
 ## 游戏入口与恢复

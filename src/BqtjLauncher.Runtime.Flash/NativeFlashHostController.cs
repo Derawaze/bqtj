@@ -5,6 +5,7 @@ using BqtjLauncher.Domain;
 
 namespace BqtjLauncher.Runtime.Flash;
 
+/// <summary>管理每账号的原生宿主进程与控制管道；仅传递客户区像素，缩放由原生端统一计算。</summary>
 internal sealed class NativeFlashHostController : IDisposable
 {
     /// <summary>宿主最多启动次数：首次卡住后重启一次，避免把偶发卡顿直接变成启动失败。</summary>
@@ -23,7 +24,6 @@ internal sealed class NativeFlashHostController : IDisposable
     private Process? _process;
     private int _hostWidth;
     private int _hostHeight;
-    private decimal _pageScale = 1m;
     private bool _disposed;
 
     public NativeFlashHostController(Uri gamePageUri, bool audioControlEnabled = true)
@@ -60,7 +60,6 @@ internal sealed class NativeFlashHostController : IDisposable
         nint parentHandle,
         int width,
         int height,
-        decimal initialScale,
         Action<string>? reportDetail = null)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -105,13 +104,12 @@ internal sealed class NativeFlashHostController : IDisposable
             // 仅在宿主确认可用后启动后台音频校准，避免初始化失败遗留监控任务。
             _audioMute.Attach(_process!.Id);
         }
-        foreach (var command in NativeHostStartupCommands.Create(width, height, initialScale))
+        foreach (var command in NativeHostStartupCommands.Create(width, height))
         {
             SendCommand(command);
         }
         _hostWidth = width;
         _hostHeight = height;
-        _pageScale = initialScale;
     }
 
     private Process StartHostProcess(string executablePath, nint parentHandle)
@@ -289,6 +287,7 @@ internal sealed class NativeFlashHostController : IDisposable
         }
     }
 
+    /// <summary>同步原生客户区；同尺寸通知也用于校准新加载文档，不能只在尺寸改变时发送。</summary>
     public void Resize(int width, int height)
     {
         if (width <= 0 || height <= 0 || !CanSendCommand())
@@ -319,13 +318,12 @@ internal sealed class NativeFlashHostController : IDisposable
             }
 
             /*
-             * reload 会销毁并重建 IWebBrowser2，新控件不会可靠继承宿主客户区与光学缩放。
-             * 必须在刷新回执之后、画面重新显示之前先恢复物理客户区，再恢复窗口倍率。
+             * reload 会销毁并重建 IWebBrowser2；回执后同步实际客户区，
+             * 原生端在导航完成和显示前按客户区恢复缩放，避免维护另一份倍率状态。
              */
             var restoreCommands = NativeHostReloadCommands.Create(
                 _hostWidth,
-                _hostHeight,
-                _pageScale);
+                _hostHeight);
             foreach (var command in restoreCommands.Skip(1))
             {
                 await _process.StandardInput.WriteLineAsync(command);
@@ -381,14 +379,6 @@ internal sealed class NativeFlashHostController : IDisposable
         {
             _responseGate.Release();
         }
-    }
-
-    public void SetScale(decimal scale)
-    {
-        EnsureRunning();
-        var percentage = decimal.ToInt32(decimal.Round(scale * 100m));
-        SendCommand($"scale {percentage.ToString(CultureInfo.InvariantCulture)}");
-        _pageScale = scale;
     }
 
     /// <summary>串行应用倍率，并返回该请求真正执行前的档位。</summary>
@@ -505,51 +495,31 @@ internal sealed class NativeFlashHostController : IDisposable
 
 }
 
-/// <summary>生成原生宿主首次显示前的命令，并避免原速档触发无意义的 IE 光学缩放。</summary>
+/// <summary>首次显示只传物理客户区；倍率由原生宿主按真实客户区及 DPI 计算。</summary>
 internal static class NativeHostStartupCommands
 {
-    public static IReadOnlyList<string> Create(int width, int height, decimal scale)
+    public static IReadOnlyList<string> Create(int width, int height)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(width, 1);
         ArgumentOutOfRangeException.ThrowIfLessThan(height, 1);
-        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(scale, 0);
-
-        var commands = new List<string>
-        {
+        return [
             $"resize {width.ToString(CultureInfo.InvariantCulture)} {height.ToString(CultureInfo.InvariantCulture)}",
-        };
-        if (Math.Abs(scale - 1m) > 0.001m)
-        {
-            var percentage = decimal.ToInt32(decimal.Round(scale * 100m));
-            commands.Add($"scale {percentage.ToString(CultureInfo.InvariantCulture)}");
-        }
-
-        return commands;
+        ];
     }
 }
 
 /// <summary>
-/// 生成刷新浏览器后的显示状态恢复命令；原速依赖新控件默认值，避免无意义的光学缩放。
+/// 生成刷新浏览器后的尺寸恢复命令；不再要求新控件继承旧文档的光学倍率。
 /// </summary>
 internal static class NativeHostReloadCommands
 {
-    public static IReadOnlyList<string> Create(int width, int height, decimal scale)
+    public static IReadOnlyList<string> Create(int width, int height)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(width, 1);
         ArgumentOutOfRangeException.ThrowIfLessThan(height, 1);
-        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(scale, 0);
-
-        var commands = new List<string>
-        {
+        return [
             "reload",
             $"resize {width.ToString(CultureInfo.InvariantCulture)} {height.ToString(CultureInfo.InvariantCulture)}",
-        };
-        if (Math.Abs(scale - 1m) > 0.001m)
-        {
-            var percentage = decimal.ToInt32(decimal.Round(scale * 100m));
-            commands.Add($"scale {percentage.ToString(CultureInfo.InvariantCulture)}");
-        }
-
-        return commands;
+        ];
     }
 }
