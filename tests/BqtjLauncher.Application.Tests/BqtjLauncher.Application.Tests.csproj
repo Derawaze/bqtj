@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net10.0-windows</TargetFramework>
@@ -18,6 +18,10 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
+    <Compile Include="../../native/Diagnostics/MaaBackgroundProbe/DailyMenuGeometry.cs" Link="DailyMenuGeometry.cs" />
+    <Compile Include="../../native/Diagnostics/MaaBackgroundProbe/DailyRunPrompt.cs" Link="DailyRunPrompt.cs" />
+    <Compile Include="../../native/Diagnostics/MaaBackgroundProbe/DirectChildInput.cs" Link="DirectChildInput.cs" />
+    <Compile Include="../../native/Diagnostics/MaaBackgroundProbe/LiveTargets.cs" Link="LiveTargets.cs" />
   </ItemGroup>
 
   <ItemGroup>

@@ -70,6 +70,8 @@ public partial class App : System.Windows.Application
                     credential,
                     () => credentialStore.ReadCredentialAsync(hostRequest.AccountId));
                 MainWindow = hostWindow;
+                if (hostRequest.AutomationSessionId is Guid automationSessionId)
+                    hostWindow.EnableAutomation(automationSessionId);
                 // 先透明完成真实客户区校准和 Flash 启动，避免尺寸跳变、白边及初始化蓝帧。
                 hostWindow.Opacity = 0;
                 hostWindow.ShowActivated = false;
@@ -95,6 +97,15 @@ public partial class App : System.Windows.Application
                 },
                 provider.GetRequiredService<IGamePageSource>()));
             services.AddSingleton<LauncherModule>();
+            // 开发槽位共用dev/automation；发行版可选组件置于启动器同目录automation。
+            var executableDirectory = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar);
+            var parentDirectory = Directory.GetParent(executableDirectory);
+            var automationDirectory = parentDirectory?.Name == "dev"
+                ? Path.Combine(parentDirectory.FullName, "automation")
+                : Path.Combine(executableDirectory, "automation");
+            services.AddSingleton(new MaaDailyScriptExecutor(automationDirectory));
+            services.AddSingleton<IDailyScriptExecutor>(provider => provider.GetRequiredService<MaaDailyScriptExecutor>());
+            services.AddSingleton<DailyScriptRunner>();
             services.AddSingleton<ILauncherUpdateSource, GitHubLauncherUpdateSource>();
             services.AddSingleton<MainWindowViewModel>();
             services.AddSingleton<MainWindow>();

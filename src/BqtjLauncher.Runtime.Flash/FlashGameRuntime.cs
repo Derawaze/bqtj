@@ -8,7 +8,7 @@ using BqtjLauncher.Domain;
 
 namespace BqtjLauncher.Runtime.Flash;
 
-public sealed class FlashGameRuntime : IGameRuntime
+public sealed class FlashGameRuntime : IAutomationGameRuntime
 {
     private readonly FlashRuntimeOptions _options;
     private readonly IGamePageSource? _gamePages;
@@ -69,6 +69,13 @@ public sealed class FlashGameRuntime : IGameRuntime
     public async Task<IGameSession> StartAsync(
         GameProfile profile,
         CancellationToken cancellationToken = default)
+        => await StartCoreAsync(profile, null, cancellationToken);
+
+    /// <summary>生成管道身份并传入自身容器，加载完成后也不激活游戏窗口。</summary>
+    public Task<IGameSession> StartAutomationAsync(GameProfile profile, CancellationToken cancellationToken = default)
+        => StartCoreAsync(profile, Guid.NewGuid(), cancellationToken);
+
+    private async Task<IGameSession> StartCoreAsync(GameProfile profile, Guid? automationSessionId, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var runtime = FlashRuntimeDetector.Detect32Bit();
@@ -79,13 +86,13 @@ public sealed class FlashGameRuntime : IGameRuntime
 
         // 每次启动都重新解析并采用当次结果，避免长期运行的面板沿用平台已下线的旧版本。
         var gamePage = await ResolveGamePageAsync().WaitAsync(cancellationToken);
-        var startInfo = CreateHostStartInfo(profile, gamePage.GamePageUri);
+        var startInfo = CreateHostStartInfo(profile, gamePage.GamePageUri, automationSessionId);
         var process = Process.Start(startInfo)
             ?? throw new InvalidOperationException("无法启动独立游戏容器进程。");
-        return new FlashGameProcessSession(profile.Id, process);
+        return new FlashGameProcessSession(profile.Id, process, automationSessionId);
     }
 
-    private static ProcessStartInfo CreateHostStartInfo(GameProfile profile, Uri gamePageUri)
+    private static ProcessStartInfo CreateHostStartInfo(GameProfile profile, Uri gamePageUri, Guid? automationSessionId)
     {
         var processPath = Environment.ProcessPath
             ?? throw new InvalidOperationException("无法确定启动器进程路径。");
@@ -114,18 +121,27 @@ public sealed class FlashGameRuntime : IGameRuntime
         startInfo.ArgumentList.Add(gamePageUri.AbsoluteUri);
         startInfo.ArgumentList.Add("--panel-pid");
         startInfo.ArgumentList.Add(Environment.ProcessId.ToString(CultureInfo.InvariantCulture));
+        if (automationSessionId.HasValue)
+        {
+            startInfo.ArgumentList.Add("--automation-session");
+            startInfo.ArgumentList.Add(automationSessionId.Value.ToString("D"));
+        }
         return startInfo;
     }
 }
 
-internal sealed class FlashGameProcessSession : IGameSession
+internal sealed class FlashGameProcessSession : IAutomationGameSession
 {
     private readonly Process _process;
     private readonly TaskCompletionSource _completion =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    public FlashGameProcessSession(Guid profileId, Process process)
+    private readonly bool _automationEnabled;
+
+    public FlashGameProcessSession(Guid profileId, Process process, Guid? automationSessionId = null)
     {
+        Id = automationSessionId ?? Guid.NewGuid();
+        _automationEnabled = automationSessionId.HasValue;
         ProfileId = profileId;
         _process = process;
         _process.EnableRaisingEvents = true;
@@ -136,11 +152,35 @@ internal sealed class FlashGameProcessSession : IGameSession
         }
     }
 
-    public Guid Id { get; } = Guid.NewGuid();
+    public Guid Id { get; }
 
     public Guid ProfileId { get; }
 
     public Task Completion => _completion.Task;
+
+    /// <summary>每次重新查询容器，校验回复身份及容器PID；不缓存可能失效的Flash句柄。</summary>
+    public async Task<AutomationWindowTarget> GetTargetAsync(CancellationToken cancellationToken = default)
+    {
+        RequireAutomation();
+        var response = await AutomationSessionPipe.SendAsync(_process.Id, new(Id, "target"), cancellationToken).ConfigureAwait(false);
+        var target = response.Target ?? throw new InvalidOperationException("容器没有返回自动化目标。");
+        if (target.SessionId != Id || target.ProfileId != ProfileId || target.ContainerProcessId != _process.Id)
+            throw new InvalidOperationException("自动化目标与本会话不符。");
+        return target;
+    }
+
+    /// <summary>只请求自身容器调整运行时倍率并返回原值，不更新本地运行偏好。</summary>
+    public async Task<SpeedMultiplier> ApplySpeedAsync(SpeedMultiplier speed, CancellationToken cancellationToken = default)
+    {
+        RequireAutomation();
+        var response = await AutomationSessionPipe.SendAsync(_process.Id, new(Id, "speed", speed.Value), cancellationToken).ConfigureAwait(false);
+        return SpeedMultiplier.Create(response.PreviousSpeed ?? throw new InvalidOperationException("容器没有返回原倍率。"));
+    }
+
+    private void RequireAutomation()
+    {
+        if (!_automationEnabled || _process.HasExited) throw new InvalidOperationException("此会话未开放自动化或已退出。");
+    }
 
     public void Activate()
     {

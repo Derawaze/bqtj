@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <PlatformTarget>x64</PlatformTarget>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../src/BqtjLauncher.Application/BqtjLauncher.Application.csproj" />
+    <ProjectReference Include="../../../src/BqtjLauncher.Domain/BqtjLauncher.Domain.csproj" />
+    <!-- 与准备脚本共用固定模型身份，避免运行时信任可修改的完成标记。 -->
+    <EmbeddedResource Include="../../../tools/maa-ocr-models.json" LogicalName="MaaBackgroundProbe.OcrModels.json" />
+  </ItemGroup>
+</Project>

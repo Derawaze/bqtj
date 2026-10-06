@@ -15,6 +15,20 @@ public partial class MainWindow : Window
 {
     private readonly MainWindowViewModel _viewModel;
     private readonly BqtjLauncher.Application.IAccountEditor _accountEditor;
+    private readonly BqtjLauncher.Application.DailyScriptRunner _dailyRunner;
+    private readonly MaaDailyScriptExecutor _dailyExecutor;
+    private DailyScriptWindow? _dailyWindow;
+
+    /// <summary>打开独立日常入口；账号按打开时身份固定，不接管已有手动会话。</summary>
+    private void DailyScript_Click(object sender, RoutedEventArgs e)
+    {
+        if (_dailyWindow is not null) { _dailyWindow.Activate(); return; }
+        var selected = _viewModel.SelectedProfile;
+        if (selected is null) { _viewModel.StatusText = "请先选择一个账号。"; return; }
+        _dailyWindow = new DailyScriptWindow(selected.Id, selected.DisplayName, _dailyRunner, _dailyExecutor) { Owner = this };
+        _dailyWindow.Closed += (_, _) => _dailyWindow = null;
+        _dailyWindow.Show();
+    }
 
     /// <summary>只打开日志子目录，避免引导用户上传包含明文凭据的整个数据目录。</summary>
     private void OpenLogs_Click(object sender, RoutedEventArgs e)
@@ -60,11 +74,14 @@ public partial class MainWindow : Window
         }
     }
 
-    public MainWindow(MainWindowViewModel viewModel, BqtjLauncher.Application.IAccountEditor accountEditor)
+    public MainWindow(MainWindowViewModel viewModel, BqtjLauncher.Application.IAccountEditor accountEditor,
+        BqtjLauncher.Application.DailyScriptRunner dailyRunner, MaaDailyScriptExecutor dailyExecutor)
     {
         InitializeComponent();
         _viewModel = viewModel;
         _accountEditor = accountEditor;
+        _dailyRunner = dailyRunner;
+        _dailyExecutor = dailyExecutor;
         DataContext = viewModel;
         Loaded += async (_, _) => await _viewModel.InitializeAsync();
         // 首次显示后启动独立异步检查，不等待游戏入口解析，也不在账号容器中重复检查。

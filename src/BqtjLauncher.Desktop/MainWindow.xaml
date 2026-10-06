@@ -189,6 +189,8 @@
                                 Command="{Binding RestartProfileCommand}"
                                 Content="重启游戏"
                                 ToolTip="游戏无响应时，关闭并重新启动所选账号的游戏窗口" />
+                        <Button MinWidth="100" Height="44" Content="日常脚本"
+                                AutomationProperties.Name="日常脚本" Click="DailyScript_Click" />
                     </StackPanel>
 
                     <Border Grid.Row="2"

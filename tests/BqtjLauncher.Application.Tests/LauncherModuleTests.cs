@@ -122,6 +122,104 @@ public sealed class LauncherModuleTests
         Assert.True(await finished.Task.WaitAsync(TimeSpan.FromSeconds(5)));
     }
 
+    [Fact]
+    public async Task AutomationSkipsExistingManualSessionWithoutActivation()
+    {
+        var runtime = new FakeRuntime();
+        await using var launcher = new LauncherModule(new InMemoryProfileRepository(), runtime);
+        var profile = await launcher.CreateProfileAsync("虚构手动账号");
+        await launcher.StartAsync(profile.Id);
+
+        Assert.Null(await launcher.StartAutomationSessionAsync(profile.Id));
+        Assert.Equal(1, runtime.StartCount);
+        Assert.Equal(0, runtime.LastSession!.ActivateCount);
+        Assert.Equal(0, runtime.LastSession.CloseCount);
+    }
+
+    [Fact]
+    public async Task ConcurrentAutomationStartsOnlyIssueOneOwnership()
+    {
+        var runtime = new FakeRuntime();
+        await using var launcher = new LauncherModule(new InMemoryProfileRepository(), runtime);
+        var profile = await launcher.CreateProfileAsync("虚构并发账号");
+        var results = await Task.WhenAll(launcher.StartAutomationSessionAsync(profile.Id),
+            launcher.StartAutomationSessionAsync(profile.Id));
+
+        Assert.Single(results, session => session is not null);
+        Assert.Equal(1, runtime.StartCount);
+        Assert.Equal(1, runtime.AutomationStartCount);
+        Assert.Equal(0, runtime.LastSession!.ActivateCount);
+    }
+
+    [Fact]
+    public async Task OwnedClosePreservesOtherManualSessionAndCannotCloseTwice()
+    {
+        var runtime = new FakeRuntime();
+        await using var launcher = new LauncherModule(new InMemoryProfileRepository(), runtime);
+        var manualProfile = await launcher.CreateProfileAsync("虚构保留窗口");
+        var automationProfile = await launcher.CreateProfileAsync("虚构脚本窗口");
+        await launcher.StartAsync(manualProfile.Id);
+        var manual = runtime.LastSession!;
+        var owned = (await launcher.StartAutomationSessionAsync(automationProfile.Id))!;
+        var automatic = runtime.LastSession!;
+
+        Assert.Equal(automatic.Id, owned.Id);
+        Assert.Equal(automationProfile.Id, owned.ProfileId);
+        Assert.True(await owned.CloseAsync());
+        Assert.True(owned.Completion.IsCompletedSuccessfully);
+        Assert.False(await owned.CloseAsync());
+        Assert.Equal(1, automatic.CloseCount);
+        Assert.Equal(0, manual.CloseCount);
+        Assert.Contains(manualProfile.Id, await launcher.GetActiveProfileIdsAsync());
+        // 关闭任务返回后须已释放账号，后续存档不能因完成回调尚未调度而被误跳过。
+        Assert.DoesNotContain(automationProfile.Id, await launcher.GetActiveProfileIdsAsync());
+        Assert.NotNull(await launcher.StartAutomationSessionAsync(automationProfile.Id));
+    }
+
+    [Fact]
+    public async Task OldOwnershipCannotCloseRestartedAccountWindow()
+    {
+        var runtime = new FakeRuntime();
+        await using var launcher = new LauncherModule(new InMemoryProfileRepository(), runtime);
+        var profile = await launcher.CreateProfileAsync("虚构重启账号");
+        var old = (await launcher.StartAutomationSessionAsync(profile.Id))!;
+        await launcher.RestartAsync(profile.Id);
+        var replacement = runtime.LastSession!;
+
+        Assert.False(await old.CloseAsync());
+        Assert.Equal(0, replacement.CloseCount);
+        Assert.Contains(profile.Id, await launcher.GetActiveProfileIdsAsync());
+    }
+
+    [Fact]
+    public async Task CanceledAutomationLaunchDoesNotCreateSession()
+    {
+        var runtime = new FakeRuntime();
+        await using var launcher = new LauncherModule(new InMemoryProfileRepository(), runtime);
+        var profile = await launcher.CreateProfileAsync("虚构取消启动");
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            launcher.StartAutomationSessionAsync(profile.Id, cancellation.Token));
+        Assert.Equal(0, runtime.StartCount);
+    }
+
+    [Fact]
+    public async Task CanceledOwnedClosePreservesWindow()
+    {
+        var runtime = new FakeRuntime();
+        await using var launcher = new LauncherModule(new InMemoryProfileRepository(), runtime);
+        var profile = await launcher.CreateProfileAsync("虚构取消关闭");
+        var owned = (await launcher.StartAutomationSessionAsync(profile.Id))!;
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => owned.CloseAsync(cancellation.Token));
+        Assert.Equal(0, runtime.LastSession!.CloseCount);
+        Assert.False(owned.Completion.IsCompleted);
+    }
+
     private sealed class InMemoryProfileRepository : IGameProfileRepository
     {
         private readonly Dictionary<Guid, GameProfile> _items = [];
@@ -153,8 +251,15 @@ public sealed class LauncherModuleTests
         }
     }
 
-    private sealed class FakeRuntime : IGameRuntime
+    private sealed class FakeRuntime : IAutomationGameRuntime
     {
+        public int AutomationStartCount { get; private set; }
+
+        public Task<IGameSession> StartAutomationAsync(GameProfile profile, CancellationToken cancellationToken = default)
+        {
+            AutomationStartCount++;
+            return StartAsync(profile, cancellationToken);
+        }
         public int StartCount { get; private set; }
 
         public FakeSession? LastSession { get; private set; }

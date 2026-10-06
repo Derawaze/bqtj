@@ -9,6 +9,8 @@ public sealed record FlashHostLaunchRequest(
     bool IsolationCompatibilityAudioDisabled)
 {
     public const string ModeArgument = "--flash-host";
+    /// <summary>仅后台自动化启动携带，用于绑定专属管道并禁止加载完成时抢焦点。</summary>
+    public Guid? AutomationSessionId { get; init; }
 
     public static bool TryParse(string[] arguments, out FlashHostLaunchRequest? request)
     {
@@ -32,6 +34,10 @@ public sealed record FlashHostLaunchRequest(
             throw new ArgumentException("游戏容器启动参数无效。");
         }
 
+        var automationSession = ReadValue(arguments, "--automation-session");
+        if (arguments.Contains("--automation-session", StringComparer.OrdinalIgnoreCase)
+            && (!Guid.TryParse(automationSession, out var validatedSession) || validatedSession == Guid.Empty))
+            throw new ArgumentException("自动化会话参数无效。");
         request = new FlashHostLaunchRequest(
             parsedId,
             accountName.Trim(),
@@ -40,7 +46,8 @@ public sealed record FlashHostLaunchRequest(
             arguments.Contains("--layout-probe", StringComparer.OrdinalIgnoreCase),
             arguments.Contains(
                 "--isolation-compatibility-skip-audio",
-                StringComparer.OrdinalIgnoreCase));
+                StringComparer.OrdinalIgnoreCase))
+        { AutomationSessionId = automationSession is null ? null : Guid.Parse(automationSession) };
         return true;
     }
 

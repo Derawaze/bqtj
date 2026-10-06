@@ -30,6 +30,9 @@ public sealed class FlashHostWindow : Window, IDisposable
     internal const int NativeGameWidth = 950;
     internal const int NativeGameHeight = 600;
     private readonly NativeFlashHostController _flashHost;
+    private AutomationSessionServer? _automationServer;
+    private bool _backgroundAutomation;
+    private readonly Guid _accountId;
     private readonly BqtjLauncher.Application.AccountCredential? _credential;
     private readonly Func<Task<BqtjLauncher.Application.AccountCredential?>>? _readCredential;
     private readonly SemaphoreSlim _loadGate = new(1, 1);
@@ -77,6 +80,7 @@ public sealed class FlashHostWindow : Window, IDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(accountName);
         ArgumentOutOfRangeException.ThrowIfLessThan(panelProcessId, 1);
         options.Validate();
+        _accountId = accountId;
         _credential = credential;
         _readCredential = readCredential;
         _flashHost = new NativeFlashHostController(
@@ -134,6 +138,30 @@ public sealed class FlashHostWindow : Window, IDisposable
         Content = BuildLayout();
     }
 
+    /// <summary>仅后台模式开放本会话管道；所有宿主访问在容器调度器执行，不写入用户倍率偏好。</summary>
+    public void EnableAutomation(Guid sessionId)
+    {
+        if (sessionId == Guid.Empty || _automationServer is not null) throw new InvalidOperationException("自动化会话身份无效或已绑定。");
+        _backgroundAutomation = true;
+        _automationServer = new AutomationSessionServer(sessionId, _panelProcessId, async (request, cancellationToken) =>
+        {
+            return await Dispatcher.InvokeAsync(async () =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                if (request.Command == "target")
+                    return new AutomationSessionPipe.Response(sessionId,
+                        AutomationTargetScanner.Read(sessionId, _accountId, _flashHost.AutomationProcessId, _surface.Handle));
+                if (request.Command == "speed" && request.Speed.HasValue)
+                {
+                    var previous = await _flashHost.ApplySpeedAsync(SpeedMultiplier.Create(request.Speed.Value));
+                    return new AutomationSessionPipe.Response(sessionId, PreviousSpeed: previous.Value);
+                }
+                throw new InvalidOperationException("未知的自动化请求。");
+            }, DispatcherPriority.Normal, cancellationToken).Task.Unwrap().ConfigureAwait(false);
+        });
+    }
+
     /// <summary>先校准真实客户区，显示加载提示，页面就绪后才显示原生游戏表面。</summary>
     public async Task StartAsync()
     {
@@ -182,8 +210,8 @@ public sealed class FlashHostWindow : Window, IDisposable
 
         // 加载阶段隐藏整个 HwndHost，而非用 WPF 遮罩盖住会穿透的 ActiveX 子窗口。
         Opacity = 1;
-        ShowActivated = true;
-        Activate();
+        ShowActivated = !_backgroundAutomation;
+        if (!_backgroundAutomation) Activate();
         try
         {
             await StabilizeAndShowAsync(_lifetime.Token);
@@ -276,6 +304,7 @@ public sealed class FlashHostWindow : Window, IDisposable
 
         _disposed = true;
         _lifetime.Cancel();
+        _automationServer?.Dispose();
         _flashHost.Dispose();
         // 热键是系统级资源，窗口关闭时必须释放，否则同一账号再次启动容器会注册失败。
         var handle = new WindowInteropHelper(this).Handle;

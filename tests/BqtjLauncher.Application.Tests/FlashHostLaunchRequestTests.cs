@@ -25,5 +25,26 @@ public sealed class FlashHostLaunchRequestTests
         Assert.Equal(accountId, request.AccountId);
         Assert.Equal(4321, request.PanelProcessId);
         Assert.True(request.LayoutProbeEnabled);
+        Assert.Null(request.AutomationSessionId);
     }
+
+    [Theory]
+    [InlineData("invalid")]
+    [InlineData("00000000-0000-0000-0000-000000000000")]
+    [InlineData("")]
+    public void RejectsInvalidAutomationSession(string sessionId)
+        => Assert.Throws<ArgumentException>(() => FlashHostLaunchRequest.TryParse(Arguments(sessionId), out _));
+
+    [Fact]
+    public void CarriesAutomationSessionIdentity()
+    {
+        var id = Guid.NewGuid();
+        Assert.True(FlashHostLaunchRequest.TryParse(Arguments(id.ToString("D")), out var request));
+        Assert.Equal(id, request!.AutomationSessionId);
+    }
+
+    private static string[] Arguments(string sessionId) =>
+        [FlashHostLaunchRequest.ModeArgument, "--account-id", Guid.NewGuid().ToString("D"),
+            "--account-name", "虚构后台账号", "--game-page", "https://example.com/game.htm", "--panel-pid", "4321",
+            "--automation-session", sessionId];
 }

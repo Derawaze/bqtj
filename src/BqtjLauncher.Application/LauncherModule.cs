@@ -78,11 +78,30 @@ public sealed class LauncherModule : IAsyncDisposable
         Guid profileId,
         CancellationToken cancellationToken = default)
     {
+        var session = await StartSessionAsync(profileId, skipExisting: false, cancellationToken);
+        return session!.Id;
+    }
+
+    /// <summary>脚本只取得本次新建会话；已有手动/自动会话原子跳过，不激活、不接管。</summary>
+    public async Task<AutomationGameSession?> StartAutomationSessionAsync(
+        Guid profileId,
+        CancellationToken cancellationToken = default)
+    {
+        var session = await StartSessionAsync(profileId, skipExisting: true, cancellationToken);
+        return session is null ? null : new AutomationGameSession(session,
+            token => CloseAutomationSessionAsync(profileId, session, token));
+    }
+
+    /// <summary>共享启动互斥和会话限额，保持面板重复启动行为与脚本跳过行为各自明确。</summary>
+    private async Task<IGameSession?> StartSessionAsync(
+        Guid profileId, bool skipExisting, CancellationToken cancellationToken)
+    {
         await _gate.WaitAsync(cancellationToken);
         try
         {
             if (_sessionsByProfile.TryGetValue(profileId, out var existing))
             {
+                if (skipExisting) return null;
                 existing.Activate();
                 throw new ProfileAlreadyRunningException(profileId);
             }
@@ -93,7 +112,9 @@ public sealed class LauncherModule : IAsyncDisposable
             }
 
             var profile = await RequireProfileAsync(profileId, cancellationToken);
-            var session = await _runtime.StartAsync(profile, cancellationToken);
+            var session = skipExisting && _runtime is IAutomationGameRuntime automationRuntime
+                ? await automationRuntime.StartAutomationAsync(profile, cancellationToken)
+                : await _runtime.StartAsync(profile, cancellationToken);
             _sessionsByProfile.Add(profileId, session);
 
             var launched = profile.MarkLaunched(_clock());
@@ -101,12 +122,33 @@ public sealed class LauncherModule : IAsyncDisposable
 
             _ = ObserveCompletionAsync(profileId, session);
             SessionsChanged?.Invoke(this, EventArgs.Empty);
-            return session.Id;
+            return session;
         }
         finally
         {
             _gate.Release();
         }
+    }
+
+    /// <summary>关闭前核对原会话引用；释放锁后仍操作原对象，避免并发重启误关替代会话。</summary>
+    private async Task<bool> CloseAutomationSessionAsync(
+        Guid profileId, IGameSession ownedSession, CancellationToken cancellationToken)
+    {
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (!_sessionsByProfile.TryGetValue(profileId, out var current)
+                || !ReferenceEquals(current, ownedSession) || ownedSession.Completion.IsCompleted)
+                return false;
+        }
+        finally { _gate.Release(); }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        await ownedSession.CloseAsync(cancellationToken).ConfigureAwait(false);
+        await ownedSession.Completion.WaitAsync(cancellationToken).ConfigureAwait(false);
+        // 不依赖异步完成回调先得到调度：返回时账号必须已可启动下一存档。
+        await ReleaseSessionAsync(profileId, ownedSession).ConfigureAwait(false);
+        return true;
     }
 
     public async Task<IReadOnlySet<Guid>> GetActiveProfileIdsAsync(
@@ -198,21 +240,22 @@ public sealed class LauncherModule : IAsyncDisposable
         }
         finally
         {
-            await _gate.WaitAsync();
-            try
-            {
-                if (_sessionsByProfile.TryGetValue(profileId, out var current)
-                    && current.Id == session.Id)
-                {
-                    _sessionsByProfile.Remove(profileId);
-                }
-            }
-            finally
-            {
-                _gate.Release();
-            }
-
-            SessionsChanged?.Invoke(this, EventArgs.Empty);
+            await ReleaseSessionAsync(profileId, session).ConfigureAwait(false);
         }
+    }
+
+    /// <summary>完成回调与显式关闭共用引用校验，只释放原会话并通知一次，不移除替代窗口。</summary>
+    private async Task ReleaseSessionAsync(Guid profileId, IGameSession session)
+    {
+        var removed = false;
+        await _gate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            if (_sessionsByProfile.TryGetValue(profileId, out var current) && ReferenceEquals(current, session))
+                removed = _sessionsByProfile.Remove(profileId);
+        }
+        finally { _gate.Release(); }
+
+        if (removed) SessionsChanged?.Invoke(this, EventArgs.Empty);
     }
 }

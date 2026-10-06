@@ -33,6 +33,9 @@ internal sealed class NativeFlashHostController : IDisposable
     }
 
     public SpeedMultiplier Current { get; private set; } = SpeedMultiplier.Original;
+    /// <summary>只用于自身容器绑定；子进程退出后不得继续签发旧句柄。</summary>
+    internal int AutomationProcessId => _process is { HasExited: false } process
+        ? process.Id : throw new InvalidOperationException("原生游戏宿主尚未就绪或已退出。");
 
     /// <summary>
     /// 宿主输出行观察口：命令执行期间由 <see cref="ReadHostLineAsync"/> 逐行回调，

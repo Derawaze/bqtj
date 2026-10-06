@@ -13,6 +13,7 @@
 | F3变速 | 焦点落在独立IE/Flash子进程时WPF键盘事件收不到；原生线程消息钩子方案已实测否证。当前用 RegisterHotKey + HwndSource，保留WPF路径及300ms去重，关闭时注销 | 用户已验收游戏内切档；修改时检查点击游戏前后、按住、多窗口及其他应用中的行为，不将旧文档的前台隔离推断当作保证 |
 | 宿主启动 | 先stage再ready，分阶段等待；读超时后stdout不可复用，必须重启宿主 | NativeHostStartupDetailTests、NativeHostStartupCommandsTests；不要恢复单一固定超时 |
 | 退出残留 | OnExit同步等待释放，异步关闭链若捕获WPF上下文会互相等待；退出等待、CloseAllAsync、DisposeAsync使用ConfigureAwait(false) | GameSessionShutdownTests旧代码失败；正常退出、5秒超时终止和LauncherModule整层释放回归通过。不代表所有残留原因都已排除 |
+| 日常进度观察不结束 | 工作进程使用扩大侧栏区域，实机同帧无法解析进度；校准区域能识别22/22。DailyProgressReader共用校准区域及保存识别，保留当前运行增长和稳定保存门槛 | 探针只读检查日常进度：旧区域未解析、共用识别22/22及保存True；领域与外层生命周期测试。单帧识别不替代完整自动关闭验收 |
 
 ## 内存与恢复
 
