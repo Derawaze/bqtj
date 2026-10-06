@@ -427,7 +427,7 @@ public sealed class FlashHostWindow : Window, IDisposable
             await _flashHost.WaitForDisplayReadyAsync(cancellationToken);
             await HoldBlackFrameAsync(cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
-            await _flashHost.ShowAsync();
+            await _flashHost.ShowAsync(cancellationToken);
             SetLoading(false);
         }
         finally
@@ -444,11 +444,11 @@ public sealed class FlashHostWindow : Window, IDisposable
         {
             cancellationToken.ThrowIfCancellationRequested();
             SetLoading(true);
-            await _flashHost.ReloadAsync();
+            await _flashHost.ReloadAsync(cancellationToken);
             await _flashHost.WaitForDisplayReadyAsync(cancellationToken);
             await HoldBlackFrameAsync(cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
-            await _flashHost.ShowAsync();
+            await _flashHost.ShowAsync(cancellationToken);
             SetLoading(false);
         }
         catch (Exception exception) when (
@@ -543,7 +543,7 @@ public sealed class FlashHostWindow : Window, IDisposable
     {
         try
         {
-            var previous = await _flashHost.ApplySpeedAsync(multiplier);
+            var previous = await _flashHost.ApplySpeedAsync(multiplier, _lifetime.Token);
             _speedHistory.RecordSuccessfulTransition(previous, multiplier);
             if (_speedHistory.Previous is { } recent)
             {
@@ -557,6 +557,11 @@ public sealed class FlashHostWindow : Window, IDisposable
                 _speedButton.ToolTip =
                     $"当前：{multiplier.DisplayText}；F3 与上一档倍率互换";
             }
+        }
+        catch (Exception exception) when (_lifetime.IsCancellationRequested
+            && exception is OperationCanceledException or ObjectDisposedException or InvalidOperationException or IOException)
+        {
+            // 窗口关闭取消变速请求，不再弹出已关闭窗口的提示。
         }
         catch (Exception exception) when (
             exception is FileNotFoundException

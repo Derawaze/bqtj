@@ -523,27 +523,41 @@ static BOOL read_command_line(char *line, size_t capacity)
     return FALSE;
 }
 
+/* 回执一次性写入 stdout；编号供 WPF 丢弃超时旧请求，零编号沿用离线探针的旧协议。 */
+static void report_reply(unsigned int request_id, const char *reply)
+{
+    if (request_id) printf("reply %u %s\n", request_id, reply);
+    else printf("%s\n", reply);
+    fflush(stdout);
+}
+
 static DWORD WINAPI command_reader(void *unused)
 {
     (void)unused;
     char line[8192];
     while (read_command_line(line, sizeof(line)))
     {
+        unsigned int request_id = 0;
+        int command_offset = 0;
+        char *command = line;
+        /* 父进程只给需回执的命令加编号；凭据和 resize 保持原来的单向格式。 */
+        if (sscanf(line, "request %u %n", &request_id, &command_offset) == 1 && command_offset > 0)
+            command = line + command_offset;
         unsigned int width;
         unsigned int height;
         float speed;
-        if (strncmp(line, "credential ", 11) == 0)
+        if (strncmp(command, "credential ", 11) == 0)
         {
             /* 当前进程继承的父子管道传输，不使用命令行、环境变量或网页 URL。 */
-            SendMessageW(g_host_window, WM_HOST_CREDENTIAL, 0, (LPARAM)(line + 11));
+            SendMessageW(g_host_window, WM_HOST_CREDENTIAL, 0, (LPARAM)(command + 11));
             SecureZeroMemory(line, sizeof(line));
         }
-        else if (sscanf(line, "resize %u %u", &width, &height) == 2)
+        else if (sscanf(command, "resize %u %u", &width, &height) == 2)
         {
             /* 同步完成尺寸调整，避免 show 命令越过队列而暴露尚未铺满的画面。 */
             SendMessageW(g_host_window, WM_HOST_RESIZE, width, height);
         }
-        else if (sscanf(line, "speed %f", &speed) == 1)
+        else if (sscanf(command, "speed %f", &speed) == 1)
         {
             union
             {
@@ -552,32 +566,29 @@ static DWORD WINAPI command_reader(void *unused)
             } argument;
             argument.bits = 0;
             argument.value = speed;
-            PostMessageW(g_host_window, WM_HOST_SPEED, 0, argument.bits);
+            PostMessageW(g_host_window, WM_HOST_SPEED, request_id, argument.bits);
         }
-        else if (strncmp(line, "reload", 6) == 0)
+        else if (strncmp(command, "reload", 6) == 0)
         {
             /* 同步等待浏览器线程执行 Refresh，让上层能区分成功和空操作。 */
             LRESULT reload_result = SendMessageW(g_host_window, WM_HOST_RELOAD, 0, 0);
-            printf(reload_result != 0 ? "reload-ok\n" : "reload-error\n");
-            fflush(stdout);
+            report_reply(request_id, reload_result != 0 ? "reload-ok" : "reload-error");
         }
-        else if (sscanf(line, "scale %u", &width) == 1)
+        else if (sscanf(command, "scale %u", &width) == 1)
         {
             SendMessageW(g_host_window, WM_HOST_SCALE, width, 0);
         }
-        else if (strcmp(line, "display-ready") == 0)
+        else if (strcmp(command, "display-ready") == 0)
         {
             LRESULT ready = SendMessageW(g_host_window, WM_HOST_DISPLAY_READY, 0, 0);
-            printf(ready ? "display-ready\n" : "display-pending\n");
-            fflush(stdout);
+            report_reply(request_id, ready ? "display-ready" : "display-pending");
         }
-        else if (strncmp(line, "show", 4) == 0)
+        else if (strncmp(command, "show", 4) == 0)
         {
             LRESULT show_result = SendMessageW(g_host_window, WM_HOST_SHOW, 0, 0);
-            printf(show_result != 0 ? "show-ok\n" : "show-error\n");
-            fflush(stdout);
+            report_reply(request_id, show_result != 0 ? "show-ok" : "show-error");
         }
-        else if (strncmp(line, "exit", 4) == 0)
+        else if (strncmp(command, "exit", 4) == 0)
         {
             PostMessageW(g_host_window, WM_CLOSE, 0, 0);
             break;
@@ -691,13 +702,13 @@ static LRESULT CALLBACK host_window_proc(HWND window, UINT message, WPARAM word,
             if (!apply_speed(argument.speed))
             {
                 fprintf(stderr, "apply speed failed (win32=%lu)\n", GetLastError());
-                printf("speed-error %lu\n", GetLastError());
-                fflush(stdout);
+                char reply[64];
+                snprintf(reply, sizeof(reply), "speed-error %lu", GetLastError());
+                report_reply((unsigned int)word, reply);
             }
             else
             {
-                printf("speed-ok\n");
-                fflush(stdout);
+                report_reply((unsigned int)word, "speed-ok");
             }
             return 0;
         }

@@ -13,6 +13,7 @@
 | 账号与会话规则 | src/BqtjLauncher.Domain/、src/BqtjLauncher.Application/LauncherModule.cs |
 | 明文凭据与事务 | src/BqtjLauncher.Application/IAccountEditor.cs、src/BqtjLauncher.Infrastructure/SqliteAccountEditor.cs |
 | 容器工具栏、加载层 | src/BqtjLauncher.Runtime.Flash/FlashHostWindow.cs |
+| 命令超时、取消与回执编号 | src/BqtjLauncher.Runtime.Flash/NativeHostCommandChannel.cs |
 | 启动/回执/生命周期 | FlashGameRuntime.cs、NativeFlashHostController.cs（同上目录） |
 | 游戏入口版本解析 | Application/GamePageHtml.cs、GamePageResolver.cs、Runtime.Flash/HttpGamePageSource.cs |
 | 共享窗口/静音与账号变速偏好 | GameRuntimePreferenceStore.cs、SpeedPreferenceStore.cs（同上目录） |
@@ -29,7 +30,7 @@
 - 填充限定可信HTTPS文档、同表单字段和提交目标；保留用户输入，完成一次点击后不自动重试。
 - 显示按原生客户区计算整数百分比和居中黑边；WPF负责窗口档位与加载层，就绪等待后固定1秒黑底。
 - 游戏包装页按版本发布，入口地址是运行时数据：每次启动读取4399官方游戏页得到当前版本路径，换到可直连主机后交给原生宿主；官方页不可用时依次回退上次成功解析的缓存和随包兜底地址。
-- 读取线程使用ReadFile，需回执的操作串行；WPF只传实际客户区，原生端在resize、导航完成与show时校准。查询当前光学倍率，仅在不匹配时写入，减少闪帧。
+- 原生输入线程使用ReadFile；就绪后托管端由唯一后台任务读取stdout。需回执的操作串行且带请求编号，超时只结束请求等待，迟到回执按编号丢弃；凭据与resize仍为单向命令，共用写入锁。WPF只传实际客户区，原生端在resize、导航完成与show时校准。查询当前光学倍率，仅在不匹配时写入，减少闪帧。
 - 原生x86宿主开启大地址支持，增加x64 Windows上的地址空间余量；刷新显式Stop导航、关闭旧OLE实例并销毁窗口，保留进程内Cookie。该改动不代表已修复游戏内部内存泄漏。
 - Flash计时导入只在当前宿主内替换，连续结算后切换倍率；音频通过宿主PID控制。
 - 共享偏好用命名互斥、临时文件原子替换及分字段更新，防止多开互相覆盖。

@@ -59,8 +59,9 @@ jobs:
       - name: Reject tracked build output and private state
         shell: pwsh
         run: |
-          $forbiddenPattern = '(^|/)(artifacts|bin|obj|TestResults|coverage|logs|data)(/|$)|\.(exe|dll|pdb|zip|db|dmp|pfx|snk)$'
-          $forbidden = @(git ls-files | Where-Object { $_ -match $forbiddenPattern })
+          $forbiddenPattern = '(^|/)(artifacts|bin|obj|TestResults|coverage|logs|data|profiles|\.local)(/|$)|\.(exe|dll|pdb|zip|db|db-shm|db-wal|sqlite|sqlite3|sqlite-shm|sqlite-wal|dmp|etl|trace|log|pfx|p12|snk|pem|key)$|(^|/)\.env(\..+)?$|\.secrets\.json$'
+          # 虚构环境模板可以公开；账号库、运行日志与本机密钥不能进入 Git。
+          $forbidden = @(git ls-files | Where-Object { $_ -match $forbiddenPattern -and [IO.Path]::GetFileName($_) -ne '.env.example' })
           if ($forbidden.Count -gt 0) {
             $forbidden | ForEach-Object { Write-Error "不应提交的生成或私有文件：$_" }
             throw '仓库包含生成产物或本地私有状态。'

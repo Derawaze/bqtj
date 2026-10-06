@@ -25,12 +25,19 @@ profiles/
 *.db
 *.db-shm
 *.db-wal
+*.sqlite
+*.sqlite3
+*.sqlite-shm
+*.sqlite-wal
 *.secrets.json
 .env
 .env.*
 !.env.example
 *.pfx
 *.snk
+*.p12
+*.pem
+*.key
 
 # Packages and generated distribution files
 packages/

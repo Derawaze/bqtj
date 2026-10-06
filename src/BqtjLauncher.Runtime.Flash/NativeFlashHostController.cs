@@ -22,6 +22,7 @@ internal sealed class NativeFlashHostController : IDisposable
     private readonly SemaphoreSlim _responseGate = new(1, 1);
     private readonly GameAudioSessionMute _audioMute = new();
     private Process? _process;
+    private NativeHostCommandChannel? _commands;
     private int _hostWidth;
     private int _hostHeight;
     private bool _disposed;
@@ -35,7 +36,7 @@ internal sealed class NativeFlashHostController : IDisposable
     public SpeedMultiplier Current { get; private set; } = SpeedMultiplier.Original;
 
     /// <summary>
-    /// 宿主输出行观察口：命令执行期间由 <see cref="ReadHostLineAsync"/> 逐行回调，
+    /// 宿主输出行观察口：由后台命令读取任务逐行回调，不用于直接更新 UI，
     /// 用于确认宿主回执是否真的从管道到达（用户现场没有调试器，只能靠日志）。
     /// </summary>
     internal Action<string>? LineObserver { get; set; }
@@ -97,6 +98,10 @@ internal sealed class NativeFlashHostController : IDisposable
                 throw new InvalidOperationException($"{reason}请关闭其它游戏窗口后重试，仍未恢复请附上日志反馈。");
             }
         }
+
+        // ready 之前仍用分阶段启动等待；就绪后将 stdout 交给唯一的命令通道读取者。
+        _commands = new NativeHostCommandChannel(_process!.StandardInput, _process.StandardOutput,
+            line => LineObserver?.Invoke(line));
 
         // AppContainer 兼容性探针暂时禁用 Core Audio；正式隔离链必须由普通面板 broker 接管音频。
         if (_audioControlEnabled)
@@ -217,6 +222,8 @@ internal sealed class NativeFlashHostController : IDisposable
 
     private void StopHostProcess()
     {
+        _commands?.Dispose();
+        _commands = null;
         if (_process is null)
         {
             return;
@@ -301,16 +308,13 @@ internal sealed class NativeFlashHostController : IDisposable
     }
 
     /// <summary>刷新游戏页，并等待原生浏览器确认 Refresh 已实际执行。</summary>
-    public async Task ReloadAsync()
+    public async Task ReloadAsync(CancellationToken cancellationToken = default)
     {
-        await _responseGate.WaitAsync();
+        await _responseGate.WaitAsync(cancellationToken);
         try
         {
             EnsureRunning();
-            await _process!.StandardInput.WriteLineAsync("reload");
-            await _process.StandardInput.FlushAsync();
-            var response = await ReadHostLineAsync()
-                .WaitAsync(TimeSpan.FromSeconds(10));
+            var response = await _commands!.RequestAsync("reload", cancellationToken);
             if (!string.Equals(response, "reload-ok", StringComparison.Ordinal))
             {
                 throw new InvalidOperationException(
@@ -326,9 +330,8 @@ internal sealed class NativeFlashHostController : IDisposable
                 _hostHeight);
             foreach (var command in restoreCommands.Skip(1))
             {
-                await _process.StandardInput.WriteLineAsync(command);
+                SendCommand(command);
             }
-            await _process.StandardInput.FlushAsync();
         }
         finally
         {
@@ -346,10 +349,7 @@ internal sealed class NativeFlashHostController : IDisposable
             try
             {
                 EnsureRunning();
-                await _process!.StandardInput.WriteLineAsync("display-ready");
-                await _process.StandardInput.FlushAsync(cancellationToken);
-                var response = await ReadHostLineAsync(cancellationToken)
-                    .WaitAsync(TimeSpan.FromSeconds(10), cancellationToken);
+                var response = await _commands!.RequestAsync("display-ready", cancellationToken);
                 if (response == "display-ready") return;
                 if (response != "display-pending") throw new InvalidOperationException("无法确认游戏加载状态。");
             }
@@ -359,16 +359,13 @@ internal sealed class NativeFlashHostController : IDisposable
     }
 
     /// <summary>在尺寸、缩放和 Flash 初始化完成后，同步显示原生游戏子窗口。</summary>
-    public async Task ShowAsync()
+    public async Task ShowAsync(CancellationToken cancellationToken = default)
     {
-        await _responseGate.WaitAsync();
+        await _responseGate.WaitAsync(cancellationToken);
         try
         {
             EnsureRunning();
-            await _process!.StandardInput.WriteLineAsync("show");
-            await _process.StandardInput.FlushAsync();
-            var response = await ReadHostLineAsync()
-                .WaitAsync(TimeSpan.FromSeconds(10));
+            var response = await _commands!.RequestAsync("show", cancellationToken);
             if (!string.Equals(response, "show-ok", StringComparison.Ordinal))
             {
                 throw new InvalidOperationException(
@@ -382,19 +379,15 @@ internal sealed class NativeFlashHostController : IDisposable
     }
 
     /// <summary>串行应用倍率，并返回该请求真正执行前的档位。</summary>
-    public async Task<SpeedMultiplier> ApplySpeedAsync(SpeedMultiplier multiplier)
+    public async Task<SpeedMultiplier> ApplySpeedAsync(SpeedMultiplier multiplier, CancellationToken cancellationToken = default)
     {
-        await _responseGate.WaitAsync();
+        await _responseGate.WaitAsync(cancellationToken);
         try
         {
             EnsureRunning();
             var previous = Current;
-            if (multiplier == Current)
-            {
-                return previous;
-            }
-
-            await SendSpeedCommandAsync(multiplier);
+            // 超时的旧命令可能迟到生效，即使目标等于上次确认值也必须向宿主重新确认。
+            await SendSpeedCommandAsync(multiplier, cancellationToken);
             Current = multiplier;
             return previous;
         }
@@ -405,13 +398,10 @@ internal sealed class NativeFlashHostController : IDisposable
     }
 
     /// <summary>发送单次倍率命令，并以原生宿主回执作为成功边界。</summary>
-    private async Task SendSpeedCommandAsync(SpeedMultiplier multiplier)
+    private async Task SendSpeedCommandAsync(SpeedMultiplier multiplier, CancellationToken cancellationToken)
     {
-        await _process!.StandardInput.WriteLineAsync(
-            $"speed {multiplier.Value.ToString(CultureInfo.InvariantCulture)}");
-        await _process.StandardInput.FlushAsync();
-        var response = await ReadHostLineAsync()
-            .WaitAsync(TimeSpan.FromSeconds(10));
+        var response = await _commands!.RequestAsync(
+            $"speed {multiplier.Value.ToString(CultureInfo.InvariantCulture)}", cancellationToken);
         if (!string.Equals(response, "speed-ok", StringComparison.Ordinal))
         {
             throw new InvalidOperationException(
@@ -426,11 +416,15 @@ internal sealed class NativeFlashHostController : IDisposable
             return;
         }
 
+        _disposed = true;
+        _commands?.Dispose();
+        _commands = null;
+
         if (_process is { HasExited: false } process)
         {
             try
             {
-                process.StandardInput.WriteLine("exit");
+                // 关闭输入触发原生读取线程退出；不向已取消的写任务并发追加 exit 命令。
                 process.StandardInput.Close();
                 if (!process.WaitForExit(2000))
                 {
@@ -438,7 +432,7 @@ internal sealed class NativeFlashHostController : IDisposable
                     process.WaitForExit(2000);
                 }
             }
-            catch (InvalidOperationException)
+            catch (Exception exception) when (exception is InvalidOperationException or IOException)
             {
                 // The child exited between the HasExited check and the shutdown command.
             }
@@ -447,26 +441,10 @@ internal sealed class NativeFlashHostController : IDisposable
         _process?.Dispose();
         _process = null;
         _audioMute.Dispose();
-        _disposed = true;
     }
 
     private bool CanSendCommand() =>
         !_disposed && _process is { HasExited: false };
-
-    /// <summary>
-    /// 读取一行宿主输出，并把每一行交给观察口（用于现场日志）。
-    /// </summary>
-    private async Task<string?> ReadHostLineAsync(CancellationToken cancellationToken = default)
-    {
-        var host = _process ?? throw new InvalidOperationException("原生 Flash 宿主尚未启动。");
-        var line = await host.StandardOutput.ReadLineAsync(cancellationToken).AsTask();
-        if (line is not null)
-        {
-            LineObserver?.Invoke(line);
-        }
-
-        return line;
-    }
 
     private void EnsureRunning()
     {
@@ -484,8 +462,7 @@ internal sealed class NativeFlashHostController : IDisposable
     {
         try
         {
-            _process!.StandardInput.WriteLine(command);
-            _process.StandardInput.Flush();
+            _commands!.Send(command);
         }
         catch (IOException exception)
         {

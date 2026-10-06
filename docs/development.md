@@ -35,6 +35,9 @@ dotnet test BqtjLauncher.sln --configuration Release
 该脚本串行验证居中布局、真实Flash像素缩放、倍率/导航重置恢复、20次刷新、高位地址与空闲管道。像素测试短暂显示自己的无焦点夹具，不读取账号或加载游戏资源；中间产物仅写入artifacts/dev/probes。
 NativeCookieSessionProbe按stage/ready协议等待启动，测试本地HTTP与唯一虚构Cookie。若沙箱写入合成Cookie报12004，需在允许写入测试Cookie的环境运行，不能当作产品会话隔离失败或跳过断言后宣称通过。
 
+命令恢复验证：`./tools/Test-NativeCommandRecovery.ps1 -CompilerPath <32位gcc路径>`。
+该脚本连接生产托管通道与原生命令线程，用隐藏虚构窗口模拟主线程短时阻塞，验证超时、迟到回执、取消、旧协议与控制器关闭；实际匿名进程管道也必须结束。输出仅 artifacts/dev/probes/command-recovery，不创建账号或加载游戏。夹具未加载 Flash，速度错误回执是预期结果。NativeCookieSessionProbe首个账号使用带编号刷新，其余使用旧命令，均需保持合成 Cookie。
+
 ## 构建与交付
 
 先阅读 [构建与版本规范](build-policy.md)，这是目录、版本和人工验收门槛的唯一规范。

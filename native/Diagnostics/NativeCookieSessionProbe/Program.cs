@@ -52,9 +52,11 @@ internal static class Program
             var before = server.Counts.ToDictionary(item => item.Key, item => item.Value);
             foreach (var process in hosts)
             {
-                process.StandardInput.WriteLine("reload");
+                // 首个宿主验证新编号协议，其余仍验证旧命令；三账号刷新均须保留合成登录态。
+                var numbered = ReferenceEquals(process, hosts[0]);
+                process.StandardInput.WriteLine(numbered ? "request 101 reload" : "reload");
                 process.StandardInput.Flush();
-                RequireResponse(process, "reload-ok");
+                RequireResponse(process, numbered ? "reply 101 reload-ok" : "reload-ok");
             }
             WaitFor(() => before.All(item => server.Counts[item.Key] >= item.Value + 3), "刷新重建浏览器后的 Cookie");
             server.AssertHealthy();
