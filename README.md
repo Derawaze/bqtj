@@ -12,5 +12,5 @@
 
 账号密码按用户选择明文保存在本机；验证码或登录错误需手动处理。本软件为第三方工具，与游戏运营方无隶属关系。
 
-开发与构建见 [文档导航](docs/README.md)。项目采用已有 [GPLv3 许可证](LICENSE)，发行包保留 [第三方声明](THIRD_PARTY_NOTICES.md)，不包含 Flash、游戏资源、用户数据或其他启动器的程序。
+开发与构建见 [在线文档](https://github.com/Derawaze/bqtj/tree/main/docs)。项目采用已有 [GPLv3 许可证](LICENSE)，发行包保留 [第三方声明](THIRD_PARTY_NOTICES.md)，不包含 Flash、游戏资源、用户数据或其他启动器的程序。
 
