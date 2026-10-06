@@ -61,7 +61,7 @@ jobs:
         run: |
           $forbiddenPattern = '(^|/)(artifacts|bin|obj|TestResults|coverage|logs|data|profiles|\.local)(/|$)|\.(exe|dll|pdb|zip|db|db-shm|db-wal|sqlite|sqlite3|sqlite-shm|sqlite-wal|dmp|etl|trace|log|pfx|p12|snk|pem|key)$|(^|/)\.env(\..+)?$|\.secrets\.json$'
           # 虚构环境模板可以公开；账号库、运行日志与本机密钥不能进入 Git。
-          $forbidden = @(git ls-files | Where-Object { $_ -match $forbiddenPattern -and [IO.Path]::GetFileName($_) -ne '.env.example' })
+          $forbidden = @(git ls-files | Where-Object { $_ -match $forbiddenPattern -and $_ -ne '.env.example' })
           if ($forbidden.Count -gt 0) {
             $forbidden | ForEach-Object { Write-Error "不应提交的生成或私有文件：$_" }
             throw '仓库包含生成产物或本地私有状态。'
@@ -69,6 +69,11 @@ jobs:
 
       - name: Test managed modules
         run: dotnet test BqtjLauncher.sln --configuration Release --no-restore --verbosity normal
+
+      - name: Verify native command recovery
+        env:
+          BQTJ_MINGW32_GCC: ${{ steps.msys2.outputs.msys2-location }}\mingw32\bin\gcc.exe
+        run: ./tools/Test-NativeCommandRecovery.ps1 -CompilerPath $env:BQTJ_MINGW32_GCC
 
       - name: Build self-contained Windows package
         env:

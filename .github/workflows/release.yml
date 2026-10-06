@@ -48,11 +48,16 @@ jobs:
       - name: Verify managed formatting
         run: dotnet format BqtjLauncher.sln --verify-no-changes --no-restore --verbosity minimal
 
+      - name: Verify native command recovery
+        env:
+          BQTJ_MINGW32_GCC: ${{ steps.msys2.outputs.msys2-location }}\mingw32\bin\gcc.exe
+        run: ./tools/Test-NativeCommandRecovery.ps1 -CompilerPath $env:BQTJ_MINGW32_GCC
+
       - name: Verify public release legal files
         shell: pwsh
         run: |
-          # 不擅自为项目选择开源许可证；随包必须保留第三方声明。
-          foreach ($path in @('THIRD_PARTY_NOTICES.md')) {
+          # 保留 main 已有的 GPLv3 许可证与第三方声明。
+          foreach ($path in @('LICENSE', 'THIRD_PARTY_NOTICES.md')) {
             if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
               throw "公开发布缺少必要文件：$path"
             }

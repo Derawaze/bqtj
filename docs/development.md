@@ -25,7 +25,7 @@ dotnet test BqtjLauncher.sln --configuration Release
 | 打包/公共运行链 | 全量测试、x86构建、ZIP验证及从发布目录启动 |
 
 回归源：LoginAutofillProbe.c、CredentialPipeProbe.c、ViewportProbe.c、StartupZoomProbe.c、AddressSpaceProbe.c、NativeCommandPipeProbe.c、NativeCookieSessionProbe。
-具体命令见对应 [诊断索引](README.md#决策与诊断)。LiveLoginAutofillProbe使用虚构值，默认不提交网络登录。不要把启动成功代替具体行为验收。
+原因和验证入口见 [回归要点](regressions.md) 与 [诊断索引](README.md)。LiveLoginAutofillProbe使用虚构值，默认不提交网络登录。不要把启动成功代替具体行为验收。
 原生宿主每次改动都要重编译；本机没有32位MinGW-w64时不得把“C#测试通过”当作原生已验证。
 
 窗口与刷新离线验证：
@@ -51,7 +51,7 @@ $devVersion = '0.0.0-dev.' + [DateTime]::UtcNow.ToString('yyyyMMddHHmmss')
 # ./tools/Publish-Release.ps1 -ReleaseApproved -Version <已核对的新正式版本>
 ```
 
-完整包包含两个入口程序、README 和第三方声明；覆盖更新包包含两个入口程序和 HOTFIX-README.md。两种包均校验清单、x86入口及 SHA256，不分发 Flash 或用户数据。构建配置 Release 不代表允许正式发行；是否正式交付由模式与人工门槛决定。
+完整包包含两个入口程序、README、GPLv3 许可证和第三方声明；覆盖更新包包含两个入口程序和 HOTFIX-README.md，原安装目录的许可证及第三方声明必须保留。两种包均校验清单、x86入口及 SHA256，不分发 Flash 或用户数据。构建配置 Release 不代表允许正式发行；是否正式交付由模式与人工门槛决定。
 若使用 -NoRestore 且提示缺少win-x86资产，先运行：
 ```powershell
 dotnet restore src/BqtjLauncher.Desktop/BqtjLauncher.Desktop.csproj -r win-x86 -p:PublishSingleFile=true
@@ -85,3 +85,11 @@ CI工作流覆盖测试、原生构建与ZIP校验；仅在本次人工验收和
 运行 ./tools/Measure-GameMemory.ps1，默认每2秒采样、共30次；只记录仓库内进程的PID、私有提交量、工作集和句柄数。不读账号和内存内容。比较进入游戏、切关、刷新及重启前后的私有提交量，不能以一次工作集下降判断泄漏已修复。
 
 Flash进程内存不受.NET垃圾回收管理。重启单个账号容器可以释放其进程资源但会中断关卡；不自动触发GC、清Cookie或修剪工作集。
+
+## 用户反馈与诊断工具
+
+面板右上角提供“打开日志目录”和“导出诊断包”。用户选择 ZIP 保存位置后，后台导出版本、系统、运行库、架构及最近最多 7 份日志摘要，每份只取末尾 2MiB。没有日志时仍可导出环境信息，不可读文件只记录跳过数量。
+
+摘要只保留时间、级别、固定事件、错误类型和有限数值，不原样复制异常正文、URL、账号信息或完整日志，不读取账号库或 Cookie，不自动上传。反馈应附版本、操作步骤和发生时间，必要时用户自行提交诊断包；不得上传整个用户数据目录。
+
+原始日志位于 `%LOCALAPPDATA%/BqtjLauncher/logs`，按天或 5MiB 滚动，最多保留 7 个文件；面板与容器使用共享写入。摘要会舍弃部分细节，不能视为完整转储。诊断导出回归仅使用临时虚构日志，agent 不打开或导出用户真实日志作为测试材料。

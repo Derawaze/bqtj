@@ -1,6 +1,6 @@
 # 实现地图
 
-只描述当前实现；待做事项见 [backlog](backlog.md)，技术选择见 [当前决策](decisions.md)。
+只描述当前实现；待做事项见 [backlog](backlog.md)，历史故障原因见 [回归要点](regressions.md)。
 
 ## 运行链
 
@@ -15,6 +15,8 @@
 | 容器工具栏、加载层 | src/BqtjLauncher.Runtime.Flash/FlashHostWindow.cs |
 | 命令超时、取消与回执编号 | src/BqtjLauncher.Runtime.Flash/NativeHostCommandChannel.cs |
 | 启动/回执/生命周期 | FlashGameRuntime.cs、NativeFlashHostController.cs（同上目录） |
+| 日志目录与诊断ZIP | Infrastructure/DiagnosticBundleExporter.cs、Desktop/MainWindow.xaml.cs、Desktop/App.xaml.cs |
+| 启动器更新检查 | Application/LauncherUpdate.cs、Infrastructure/GitHubLauncherUpdateSource.cs、Desktop/MainWindowViewModel.cs |
 | 游戏入口版本解析 | Application/GamePageHtml.cs、GamePageResolver.cs、Runtime.Flash/HttpGamePageSource.cs |
 | 共享窗口/静音与账号变速偏好 | GameRuntimePreferenceStore.cs、SpeedPreferenceStore.cs（同上目录） |
 | IE/Flash宿主、Cookie、窗口居中 | native/FlashHost/native_flash_host.c |
@@ -48,3 +50,11 @@
 现有AppContainer兼容性类和 native/Diagnostics 为探针，不是正式隔离方案。当前只保证已验证的运行时Cookie行为，不外推Flash全部本地存储。
 
 
+
+## 技术选择
+
+- WPF/win-x86承载本机Flash ActiveX；每账号独立原生宿主隔离故障。同进程多ActiveX曾使面板崩溃，不能退回该方案。
+- 变速只替换当前宿主中Flash OCX计时导入，切换前按旧倍率连续结算；旧变速DLL进入.NET曾引发CoreCLR崩溃，不再加载。
+- Cookie仅隔离运行期；AppContainer实机音频E_ACCESSDENIED且IE/WinINet导航失败，不能因合成测试通过恢复该方案。持久隔离和新增系统用户等边界见CONTEXT。
+- 游戏入口从官方页解析；sda主机曾对无Referer请求返回错误页，按同路径映射可直连主机。不能把某次游戏版本写成永久入口。
+- 发布采用压缩自包含程序，不手工裁剪运行库，不启用WPF不兼容裁剪。恢复卡住游戏通过重启该账号，不能由此推断卡顿根因已解决。

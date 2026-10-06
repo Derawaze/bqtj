@@ -1,7 +1,10 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.IO;
 using System.Windows;
 using System.Windows.Navigation;
+using BqtjLauncher.Infrastructure;
+using Microsoft.Win32;
 
 namespace BqtjLauncher.Desktop;
 
@@ -12,6 +15,50 @@ public partial class MainWindow : Window
 {
     private readonly MainWindowViewModel _viewModel;
     private readonly BqtjLauncher.Application.IAccountEditor _accountEditor;
+
+    /// <summary>只打开日志子目录，避免引导用户上传包含明文凭据的整个数据目录。</summary>
+    private void OpenLogs_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Directory.CreateDirectory(DiagnosticBundleExporter.LogDirectory);
+            Process.Start(new ProcessStartInfo(DiagnosticBundleExporter.LogDirectory) { UseShellExecute = true });
+            _viewModel.StatusText = "已打开日志目录；反馈问题建议使用脱敏诊断包。";
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or Win32Exception or InvalidOperationException)
+        {
+            _viewModel.StatusText = "无法打开日志目录，请检查目录权限。";
+        }
+    }
+
+    /// <summary>用户选择保存位置后后台生成摘要包；取消不产生文件，不自动上传。</summary>
+    private async void ExportDiagnostics_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new SaveFileDialog
+        {
+            Title = "保存诊断包（仅环境信息与脱敏日志摘要）",
+            Filter = "ZIP 诊断包|*.zip",
+            DefaultExt = ".zip",
+            FileName = $"Bqtj-diagnostics-{DateTime.Now:yyyyMMdd-HHmmss}.zip",
+        };
+        if (dialog.ShowDialog(this) != true) return;
+        ExportDiagnosticsButton.IsEnabled = false;
+        _viewModel.StatusText = "正在生成诊断包…";
+        try
+        {
+            var count = await Task.Run(() => DiagnosticBundleExporter.Export(
+                DiagnosticBundleExporter.LogDirectory, dialog.FileName, _viewModel.CurrentLauncherVersion));
+            _viewModel.StatusText = $"诊断包已保存（{count} 份日志摘要）：{dialog.FileName}。请附上复现步骤和发生时间。";
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            _viewModel.StatusText = "诊断包导出失败，请选择可写入的本地目录后重试。";
+        }
+        finally
+        {
+            ExportDiagnosticsButton.IsEnabled = true;
+        }
+    }
 
     public MainWindow(MainWindowViewModel viewModel, BqtjLauncher.Application.IAccountEditor accountEditor)
     {

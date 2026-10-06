@@ -42,8 +42,12 @@
                            Foreground="{StaticResource MutedTextBrush}"
                            Text="选择账号，启动游戏" />
             </StackPanel>
-            <Button Grid.Column="2" VerticalAlignment="Center" Content="检查更新"
+            <StackPanel Grid.Column="2" VerticalAlignment="Center" Orientation="Horizontal">
+            <Button Content="打开日志目录" Click="OpenLogs_Click" />
+            <Button x:Name="ExportDiagnosticsButton" Content="导出诊断包" Click="ExportDiagnostics_Click" />
+            <Button Content="检查更新"
                     AutomationProperties.Name="检查启动器更新" Command="{Binding CheckForUpdatesCommand}" />
+            </StackPanel>
         </Grid>
 
         <!-- 主工作区保持“选择账号 → 执行操作”的稳定阅读顺序。 -->

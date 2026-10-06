@@ -13,6 +13,8 @@
 
 用户于2026-09-28指示提交、推送并正式发布当前成功版本。发布测试及构建结果见本标签 GitHub Actions。
 
-- 文字操作曾报告卡在“语法判断中”，用户目前暂未复现；本版未宣称修复该问题。
-- 加载蓝闪、跨屏 DPI、长时运行继续按实际反馈观察。
 - 不承诺 Flash 全部本地存储隔离，关闭游戏后可用已保存凭据重新登录。
+
+## 交付证据
+
+源码：eb7cdbb；本地99项测试通过。GitHub [CI](https://github.com/Derawaze/bqtj/actions/runs/36452687336) 与 [Release](https://github.com/Derawaze/bqtj/actions/runs/36452734032) 均成功；[正式下载](https://github.com/Derawaze/bqtj/releases/tag/v0.1.4) 已公开，含 ZIP 与 SHA256。旧本地产物已删除约801 MiB。
