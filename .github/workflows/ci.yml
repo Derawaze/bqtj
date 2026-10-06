@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, 'codex/**']
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -50,11 +50,6 @@ jobs:
           update: true
           install: mingw-w64-i686-gcc
 
-      - name: Verify release version rules
-        run: |
-          ./tools/Test-ReleaseVersion.ps1
-          ./tools/Test-CiRelease.ps1
-
       - name: Restore
         run: dotnet restore BqtjLauncher.sln
 
@@ -75,13 +70,11 @@ jobs:
         run: dotnet test BqtjLauncher.sln --configuration Release --no-restore --verbosity normal
 
       - name: Build self-contained Windows package
-        if: github.event_name != 'push' || github.ref != 'refs/heads/main'
         env:
           BQTJ_MINGW32_GCC: ${{ steps.msys2.outputs.msys2-location }}\mingw32\bin\gcc.exe
         run: ./tools/Publish-Release.ps1 -Development -Version ("0.0.0-dev." + [DateTime]::UtcNow.ToString('yyyyMMddHHmmss'))
 
       - name: Upload verification package
-        if: github.event_name != 'push' || github.ref != 'refs/heads/main'
         uses: actions/upload-artifact@v4
         with:
           name: BqtjLauncher-win-x86-${{ github.sha }}

@@ -2,21 +2,19 @@ name: Release
 
 on:
   push:
-    branches: [main]
     tags:
       - 'v*.*.*'
 
 permissions:
   contents: write
 
-# 所有正式发布共用锁；main自动版本与手动标签不能并行占用同一版本。
 concurrency:
-  group: official-release-${{ github.repository }}
+  group: release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   release:
-    name: Build and publish Windows x86 release
+    name: Build Windows x86 release
     runs-on: windows-latest
     timeout-minutes: 30
 
@@ -24,10 +22,8 @@ jobs:
       - name: Configure Git line endings
         run: git config --global core.autocrlf input
 
-      - name: Checkout exact triggering commit
+      - name: Checkout
         uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
 
       - name: Set up .NET SDK
         uses: actions/setup-dotnet@v6
@@ -42,11 +38,6 @@ jobs:
           update: true
           install: mingw-w64-i686-gcc
 
-      - name: Verify release version rules
-        run: |
-          ./tools/Test-ReleaseVersion.ps1
-          ./tools/Test-CiRelease.ps1
-
       - name: Restore and test
         run: |
           dotnet restore BqtjLauncher.sln
@@ -60,84 +51,54 @@ jobs:
       - name: Verify public release legal files
         shell: pwsh
         run: |
+          # 不擅自为项目选择开源许可证；随包必须保留第三方声明。
           foreach ($path in @('THIRD_PARTY_NOTICES.md')) {
             if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
               throw "公开发布缺少必要文件：$path"
             }
           }
 
-      - name: Resolve remote release version
-        id: release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          $commit = (git rev-parse HEAD).Trim()
-          ./tools/Resolve-CiRelease.ps1 -Repository $env:GH_REPO -Commit $commit -OutputFile $env:GITHUB_OUTPUT -Ref $env:GITHUB_REF
-
       - name: Build release archive
-        if: steps.release.outputs.skip != 'true'
         env:
           BQTJ_MINGW32_GCC: ${{ steps.msys2.outputs.msys2-location }}\mingw32\bin\gcc.exe
-          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_TAG: ${{ github.ref_name }}
         run: |
           $version = $env:RELEASE_TAG.Substring(1)
           ./tools/Publish-Release.ps1 -Version $version -ReleaseApproved -OutputDirectory ./artifacts/release
 
       - name: Upload workflow artifact
-        if: steps.release.outputs.skip != 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: BqtjLauncher-${{ steps.release.outputs.tag }}-win-x86
+          name: BqtjLauncher-${{ github.ref_name }}-win-x86
           path: |
             artifacts/release/*.zip
             artifacts/release/*.sha256
           if-no-files-found: error
 
-      - name: Publish complete GitHub release
-        if: steps.release.outputs.skip != 'true'
+      - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          $ErrorActionPreference = 'Stop'
-          $commit = (git rev-parse HEAD).Trim()
-          # 构建期间main可能前进；旧提交不抢先发布或把标签指向新main。
-          if ($env:GITHUB_REF -eq 'refs/heads/main') {
-            $mainHead = gh api "repos/$env:GH_REPO/git/ref/heads/main" --jq '.object.sha'
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            if ($mainHead.Trim() -cne $commit) { Write-Output 'main已前进，跳过旧提交发布。'; exit 0 }
-          }
           $archive = @(Get-ChildItem -LiteralPath artifacts/release -Filter '*.zip')
           $checksum = @(Get-ChildItem -LiteralPath artifacts/release -Filter '*.sha256')
           if ($archive.Count -ne 1 -or $checksum.Count -ne 1) {
-            throw '发布目录必须包含一个ZIP归档和一个SHA-256校验文件。'
+            throw '发布目录必须包含一个 ZIP 归档和一个 SHA-256 校验文件。'
           }
           $assets = @($archive[0].FullName, $checksum[0].FullName)
-          # 先查询完整列表，权限错误与网络失败不可被当作“没有这个版本”。
-          $pagesJson = gh api "repos/$env:GH_REPO/releases" --paginate --slurp
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $pages = ($pagesJson -join "`n") | ConvertFrom-Json
-          $existing = @($pages | ForEach-Object { $_ } | ForEach-Object { $_ } |
-            Where-Object { $_.tag_name -ceq $env:RELEASE_TAG })
-          if ($existing.Count -gt 0) {
-            if ($existing.Count -ne 1 -or -not $existing[0].draft -or $existing[0].target_commitish -cne $commit) {
-              throw '版本已公开或草稿属于其他提交，拒绝覆盖。'
+          $notes = "docs/release-$($env:RELEASE_TAG).md"
+          if (-not (Test-Path -LiteralPath $notes)) { throw "缺少发布说明：$notes" }
+          # 先完整上传到草稿，再公开；上传失败时不会留下缺附件的正式版本。
+          gh release view $env:RELEASE_TAG --json isDraft --jq '.isDraft' 1>$env:RUNNER_TEMP/release-draft.txt 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            if ((Get-Content $env:RUNNER_TEMP/release-draft.txt -Raw).Trim() -ne 'true') {
+              throw '该版本已公开，拒绝覆盖发行产物。'
             }
             gh release upload $env:RELEASE_TAG $assets --clobber
           } else {
-            $notes = "docs/release-$($env:RELEASE_TAG).md"
-            if (Test-Path -LiteralPath $notes -PathType Leaf) {
-              gh release create $env:RELEASE_TAG $assets --target $commit --title $env:RELEASE_TAG --notes-file $notes --draft
-            } else {
-              if ($env:GITHUB_REF -ne 'refs/heads/main') { throw "手动标签发布缺少说明：$notes" }
-              $notes = Join-Path $env:RUNNER_TEMP 'release-notes.md'
-              [IO.File]::WriteAllText($notes, "main自动构建的正式版。源码提交：$commit。`n`n请完整解压后运行启动器；游戏需本机注册32位Flash ActiveX。`n")
-              gh release create $env:RELEASE_TAG $assets --target $commit --title $env:RELEASE_TAG --notes-file $notes --generate-notes --draft
-            }
+            gh release create $env:RELEASE_TAG $assets --notes-file $notes --verify-tag --draft
           }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          # 完整上传草稿后公开；失败重跑仅可补全同一提交草稿。
           gh release edit $env:RELEASE_TAG --draft=false --latest
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
