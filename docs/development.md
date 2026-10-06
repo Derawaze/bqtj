@@ -30,7 +30,7 @@ dotnet test BqtjLauncher.sln --configuration Release
 
 ## 构建与交付
 
-先阅读 [构建与版本规范](build-policy.md)，这是目录、版本和人工验收门槛的唯一规范。
+先阅读 [构建与版本规范](build-policy.md)，这是目录、版本、开发验收和main自动发布的唯一规范。
 
 ```powershell
 ./tools/Start-DevLauncher.ps1 -BuildOnly
@@ -41,7 +41,7 @@ $devVersion = '0.0.0-dev.' + [DateTime]::UtcNow.ToString('yyyyMMddHHmmss')
 # ./tools/Publish-Release.ps1 -ReleaseApproved -Version <已核对的新正式版本>
 ```
 
-完整包包含两个入口程序、README 和第三方声明；覆盖更新包包含两个入口程序和 HOTFIX-README.md。两种包均校验清单、x86入口及 SHA256，不分发 Flash 或用户数据。构建配置 Release 不代表允许正式发行；是否正式交付由模式与人工门槛决定。
+完整包包含两个入口程序、README 和第三方声明；覆盖更新包包含两个入口程序和 HOTFIX-README.md。两种包均校验清单、x86入口及 SHA256，不分发 Flash 或用户数据。构建配置 Release 不代表允许正式发行；是否正式交付由模式、用户授权的main推送和发布工作流决定。
 若使用 -NoRestore 且提示缺少win-x86资产，先运行：
 ```powershell
 dotnet restore src/BqtjLauncher.Desktop/BqtjLauncher.Desktop.csproj -r win-x86 -p:PublishSingleFile=true
@@ -59,8 +59,24 @@ dotnet restore src/BqtjLauncher.Desktop/BqtjLauncher.Desktop.csproj -r win-x86 -
 ## 远程交付
 
 本地ZIP生成与公开发布是不同操作。只有用户要求公开时，才处理许可证、提交范围和远程推送；不为普通本地开发添加发布审批。
-CI工作流覆盖测试、原生构建与ZIP校验；仅在本次人工验收和发布授权后推送标签；标签工作流先上传Release草稿，成功后自动公开；必须提供docs/release-v版本号.md，已公开版本不覆盖。是否实跑成功必须有托管结果，不能以“配置存在”当作通过。
+main推送触发Release工作流：测试/格式通过后，根据远程正式Release递增PATCH，构建x86 ZIP及SHA-256，完整上传草稿后公开。自动发布说明从提交变更生成；显式MINOR/MAJOR标签仍需对应docs/release-v版本号.md。工作流共用发布锁，同提交成功重跑跳过，失败草稿只可由同提交补全，已公开版本不覆盖；构建期间main前进则旧提交不公开。CI在开发分支、PR或手动运行时只构建dev包；main推送避免重复生成dev ZIP。是否实跑成功须查看托管结果。
 
+
+## 分支、版本与规则检查
+
+`main`跟踪`origin/main`；Maa开发暂存于`codex/maa-development`，切分支前保持工作区已提交或明确保存，不将脚本开发代码随正式修复合入main。
+
+```powershell
+./tools/Test-ReleaseVersion.ps1
+./tools/Test-CiRelease.ps1
+# 查询发布及托管结果；不要输出Token或读取用户日志。
+gh release list --repo Derawaze/bqtj --limit 5
+gh run list --repo Derawaze/bqtj --workflow release.yml --limit 5
+```
+
+版本规则7项、CI准备11项使用虚构元数据，覆盖数值排序、无基线、标签冲突、旧main跳过、已发布提交重跑、同提交草稿恢复、异提交拒绝和网络失败；这些不替代真实托管构建。
+
+main规则配置在`.github/main-ruleset.json`，要求禁止强推及删除，不强制其他人审批。先用`gh api repos/Derawaze/bqtj/rulesets`检查现状；不存在同名规则时POST该配置，已有同名规则时核对后PUT到其ID。GitHub CLI需有效且具有仓库管理权限，401时由用户运行`gh auth login -h github.com`恢复登录；不向agent发送Token。必须从API读回确认启用，文件存在不算完成。
 
 ## 自动构建开发预览
 
