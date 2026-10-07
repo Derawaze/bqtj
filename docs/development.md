@@ -24,7 +24,7 @@ dotnet test BqtjLauncher.sln --configuration Release
 | 尺寸/加载/音频 | 相关逻辑或原生探针，再检查实际游戏窗口 |
 | 打包/公共运行链 | 全量测试、x86构建、ZIP验证及从发布目录启动 |
 
-回归源：LoginAutofillProbe.c、CredentialPipeProbe.c、ViewportProbe.c、StartupZoomProbe.c、AddressSpaceProbe.c、NativeCommandPipeProbe.c、NativeCookieSessionProbe。
+回归源：LoginAutofillProbe.c、CredentialPipeProbe.c、ViewportProbe.c、StartupZoomProbe.c、LoadingZoomProbe.c、AddressSpaceProbe.c、NativeCommandPipeProbe.c、NativeCookieSessionProbe。
 原因和验证入口见 [回归要点](regressions.md) 与 [诊断索引](README.md)。LiveLoginAutofillProbe使用虚构值，默认不提交网络登录。不要把启动成功代替具体行为验收。
 原生宿主每次改动都要重编译；本机没有32位MinGW-w64时不得把“C#测试通过”当作原生已验证。
 
@@ -32,7 +32,10 @@ dotnet test BqtjLauncher.sln --configuration Release
 ```powershell
 ./tools/Test-NativeViewport.ps1 -CompilerPath <32位gcc路径>
 ```
-该脚本串行验证居中布局、真实Flash像素缩放、倍率/导航重置恢复、20次刷新、高位地址与空闲管道。像素测试短暂显示自己的无焦点夹具，不读取账号或加载游戏资源；中间产物仅写入artifacts/dev/probes。
+该脚本串行验证居中布局、真实Flash像素缩放、倍率/导航重置恢复、延迟初始化及加载中切档、20次刷新、高位地址与空闲管道。像素测试短暂显示自己的无焦点夹具，不读取账号或加载游戏资源；中间产物仅写入artifacts/dev/probes。
+
+快速复现加载缩放检查：运行上面的编译验证后，可单独执行 `./artifacts/dev/probes/LoadingZoomProbe.exe`，约7秒，三轮均断言实际红矩形像素；需要本机32位Flash。`ReadyState=4`不代表游戏脚本已初始化，静态单帧检查不能替代此检查。
+
 NativeCookieSessionProbe按stage/ready协议等待启动，测试本地HTTP与唯一虚构Cookie。若沙箱写入合成Cookie报12004，需在允许写入测试Cookie的环境运行，不能当作产品会话隔离失败或跳过断言后宣称通过。
 
 命令恢复验证：`./tools/Test-NativeCommandRecovery.ps1 -CompilerPath <32位gcc路径>`。

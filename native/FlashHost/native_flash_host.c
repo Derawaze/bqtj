@@ -25,6 +25,7 @@
 #define WM_HOST_CREDENTIAL (WM_APP + 6)
 #define WM_HOST_DISPLAY_READY (WM_APP + 7)
 #define WM_HOST_LAYOUT (WM_APP + 8)
+#define TIMER_FLASH_FIT 92
 
 typedef BOOL (WINAPI *atl_ax_win_init_t)(void);
 typedef HRESULT (WINAPI *atl_ax_get_control_t)(HWND, IUnknown **);
@@ -118,6 +119,7 @@ static HRESULT navigate_page(void)
 /* 停止旧导航并关闭 OLE 实例，刷新时不让旧 Flash 下载与新页面同时占用资源。 */
 static void destroy_browser(void)
 {
+    if (g_host_window) KillTimer(g_host_window, TIMER_FLASH_FIT);
     detach_login_events();
     if (g_browser != NULL)
     {
@@ -606,6 +608,9 @@ static LRESULT CALLBACK host_window_proc(HWND window, UINT message, WPARAM word,
         case WM_TIMER:
             if (word == 91 && (++g_login_attempts >= 120 || (g_browser && login_tick(g_browser))))
                 KillTimer(window, 91);
+            /* ReadyState/DocumentComplete 不涵盖后续 SWF 初始化；它仍可把 Stage 改回 NoScale。
+             * 只检查当前 Flash 属性并按需纠正，不周期重写 IE 倍率或移动窗口，避免闪帧。 */
+            if (word == TIMER_FLASH_FIT) fit_flash_content();
             return 0;
         case WM_HOST_CREDENTIAL:
         {
@@ -662,6 +667,8 @@ static LRESULT CALLBACK host_window_proc(HWND window, UINT message, WPARAM word,
                 update_browser_viewport();
                 ShowWindow(g_browser_window, SW_SHOW);
                 UpdateWindow(g_browser_window);
+                /* 显示后每 500ms 维护等比居中；刷新/退出在 destroy_browser 中停止，旧 COM 引用不跨轮保留。 */
+                SetTimer(window, TIMER_FLASH_FIT, 500, NULL);
                 /* 加载层此时仍隐藏父 HwndHost，IsWindowVisible 会连父窗口一起判断。
                  * 回执只确认子窗口已准备显示，WPF 收到后再揭开父窗口。 */
                 return (GetWindowLongPtrW(g_browser_window, GWL_STYLE) & WS_VISIBLE) ? 1 : 0;

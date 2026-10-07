@@ -10,7 +10,7 @@ New-Item -ItemType Directory -Force -Path $probeDirectory | Out-Null
 $env:Path = (Split-Path -Parent $compiler) + ';' + $env:Path
 
 # 探针包含生产宿主源码，使用相同的 x86/LAA/Flash 兼容链接选项；只使用自制离线夹具。
-$names = @('ViewportProbe', 'StartupZoomProbe', 'AddressSpaceProbe', 'NativeCommandPipeProbe')
+$names = @('ViewportProbe', 'StartupZoomProbe', 'LoadingZoomProbe', 'AddressSpaceProbe', 'NativeCommandPipeProbe')
 foreach ($name in $names) {
     $source = Join-Path $repositoryRoot "native/Diagnostics/$name.c"
     $output = Join-Path $probeDirectory "$name.exe"

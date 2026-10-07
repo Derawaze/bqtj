@@ -8,7 +8,7 @@
 | 自动登录 | 平台用户名提示是 value 伪占位符；登录 action 可为固定根相对路径。仅可信 HTTPS、同表单且可编辑的字段允许填充；保留用户已有输入，只点一次提交，不直接 form.submit | LoginAutofillProbe、CredentialPipeProbe；真实登录由用户验收，验证码交给用户 |
 | 凭据传递 | 使用绑定父子进程的限长UTF-16十六进制管道，不经 URL、命令行或剪贴板；十六进制不是加密 | 虚构凭据覆盖换行、引号、冒号；不读取用户账号库或日志 |
 | 运行时隔离 | IE创建前设置一次 INTERNET_SUPPRESS_COOKIE_PERSIST，失败停止；刷新不能重复设置，否则可能丢自己的登录态 | WinInetCookieProbe、NativeCookieSessionProbe；多开已验收，不外推 Flash LSO、DOMStore 完整隔离 |
-| 150%画面缩在左上 | 浏览器光学倍率正确仍可能被Flash ScaleMode=3/NoScale、AlignMode=5覆盖；resize/scale/show校准为0/ShowAll、0/居中 | StartupZoomProbe旧代码失败、新代码通过；ViewportProbe四组尺寸通过。跨屏DPI、所有战斗点击未全面覆盖 |
+| 放大窗口但画面保持原尺寸 | 浏览器光学倍率正确仍可能被Flash ScaleMode=3/NoScale覆盖；加载后的SWF脚本也能晚于show/DocumentComplete改写它。布局时校准，显示后每500ms只维护Flash属性，刷新/退出停止；不周期重写IE倍率 | LoadingZoomProbe旧实现连续三次像素失败，Flash属性校准后恢复；StartupZoomProbe/ViewportProbe覆盖已加载内容。跨屏DPI、所有战斗点击及本轮真实游戏仍需验收 |
 | 显示与加载 | 根据物理客户区等比居中留黑边；就绪后固定1秒黑底。显示回执检查子窗口 WS_VISIBLE，不能用同时检查隐藏父窗口的 IsWindowVisible | 实机全屏、最大化还原、刷新已有证据；修改加载层时应观察连续加载过程 |
 | F3变速 | 焦点落在独立IE/Flash子进程时WPF键盘事件收不到；原生线程消息钩子方案已实测否证。当前用 RegisterHotKey + HwndSource，保留WPF路径及300ms去重，关闭时注销 | 用户已验收游戏内切档；修改时检查点击游戏前后、按住、多窗口及其他应用中的行为，不将旧文档的前台隔离推断当作保证 |
 | 宿主启动 | 先stage再ready，分阶段等待；启动握手读超时后stdout不可复用，必须重启宿主 | NativeHostStartupDetailTests、NativeHostStartupCommandsTests；不要恢复单一固定超时 |
