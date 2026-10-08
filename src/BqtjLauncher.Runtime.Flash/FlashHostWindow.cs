@@ -32,7 +32,6 @@ public sealed class FlashHostWindow : Window, IDisposable
     internal const int NativeGameHeight = 600;
     private readonly NativeFlashHostController _flashHost;
     private readonly BqtjLauncher.Application.AccountCredential? _credential;
-    private readonly Func<Task<BqtjLauncher.Application.AccountCredential?>>? _readCredential;
     private readonly SemaphoreSlim _loadGate = new(1, 1);
     private readonly CancellationTokenSource _lifetime = new();
     private readonly SpeedPreferenceStore _speedPreferenceStore;
@@ -65,6 +64,7 @@ public sealed class FlashHostWindow : Window, IDisposable
     private long _lastSpeedSwapTicks;
     private bool _disposed;
 
+    /// <summary>创建单账号容器，读取显示偏好并保留启动自动登录所需凭据。</summary>
     public FlashHostWindow(
         Guid accountId,
         string accountName,
@@ -72,14 +72,12 @@ public sealed class FlashHostWindow : Window, IDisposable
         int panelProcessId,
         bool layoutProbeEnabled = false,
         bool isolationCompatibilityAudioDisabled = false,
-        BqtjLauncher.Application.AccountCredential? credential = null,
-        Func<Task<BqtjLauncher.Application.AccountCredential?>>? readCredential = null)
+        BqtjLauncher.Application.AccountCredential? credential = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(accountName);
         ArgumentOutOfRangeException.ThrowIfLessThan(panelProcessId, 1);
         options.Validate();
         _credential = credential;
-        _readCredential = readCredential;
         _flashHost = new NativeFlashHostController(
             options.GamePageUri,
             audioControlEnabled: !isolationCompatibilityAudioDisabled);
@@ -302,6 +300,7 @@ public sealed class FlashHostWindow : Window, IDisposable
         }
     }
 
+    /// <summary>组装游戏工具栏和加载区域；账号信息由启动器面板管理。</summary>
     private DockPanel BuildLayout()
     {
         _reloadButton = CreateButton("刷新游戏");
@@ -379,17 +378,6 @@ public sealed class FlashHostWindow : Window, IDisposable
         buttons.Children.Add(_speedButton);
         buttons.Children.Add(scale);
         buttons.Children.Add(_muteButton);
-        var accountInfo = CreateButton("账号密码");
-        accountInfo.Click += async (_, _) =>
-        {
-            try
-            {
-                var saved = _readCredential is null ? _credential : await _readCredential();
-                if (!_disposed) new AccountCredentialWindow(saved) { Owner = this }.ShowDialog();
-            }
-            catch (Exception) { WpfMessageBox.Show(this, "无法读取当前账号信息，请稍后重试。", "账号密码"); }
-        };
-        buttons.Children.Add(accountInfo);
         buttons.Children.Add(back);
 
         var toolbar = new Grid

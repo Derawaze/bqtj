@@ -67,8 +67,7 @@ public partial class App : System.Windows.Application
                     hostRequest.PanelProcessId,
                     hostRequest.LayoutProbeEnabled,
                     hostRequest.IsolationCompatibilityAudioDisabled,
-                    credential,
-                    () => credentialStore.ReadCredentialAsync(hostRequest.AccountId));
+                    credential);
                 MainWindow = hostWindow;
                 // 先透明完成真实客户区校准和 Flash 启动，避免尺寸跳变、白边及初始化蓝帧。
                 GameWindowStartupDisplay.ShowLoading(hostWindow);
