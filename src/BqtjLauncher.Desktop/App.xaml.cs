@@ -71,9 +71,7 @@ public partial class App : System.Windows.Application
                     () => credentialStore.ReadCredentialAsync(hostRequest.AccountId));
                 MainWindow = hostWindow;
                 // 先透明完成真实客户区校准和 Flash 启动，避免尺寸跳变、白边及初始化蓝帧。
-                hostWindow.Opacity = 0;
-                hostWindow.ShowActivated = false;
-                hostWindow.Show();
+                GameWindowStartupDisplay.ShowLoading(hostWindow);
                 await hostWindow.StartAsync();
                 return;
             }

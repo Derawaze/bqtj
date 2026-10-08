@@ -20,22 +20,38 @@ public sealed class LauncherModuleTests
         Assert.Equal(1, runtime.LastSession!.ActivateCount);
     }
 
-    [Fact]
-    public async Task StartAsyncEnforcesConcurrentSessionLimit()
+    [Theory]
+    [InlineData(8)]
+    [InlineData(16)]
+    public async Task StartAsyncAllowsMultipleProfilesWithoutFixedLimit(int accountCount)
     {
         var repository = new InMemoryProfileRepository();
         var runtime = new FakeRuntime();
-        await using var launcher = new LauncherModule(
-            repository,
-            runtime,
-            maximumConcurrentSessions: 1);
-        var first = await launcher.CreateProfileAsync("账号一");
-        var second = await launcher.CreateProfileAsync("账号二");
-        await launcher.StartAsync(first.Id);
+        await using var launcher = new LauncherModule(repository, runtime);
+        var profiles = new List<GameProfile>();
+        for (var index = 0; index < accountCount; index++)
+        {
+            profiles.Add(await launcher.CreateProfileAsync($"多开虚构账号{index}"));
+        }
 
-        await Assert.ThrowsAsync<SessionLimitReachedException>(
-            () => launcher.StartAsync(second.Id));
-        Assert.Equal(1, runtime.StartCount);
+        // 超过原四账号边界后，仍验证身份去重、重启和整批关闭，避免仅修改提示文案。
+        await Task.WhenAll(profiles.Select(profile => launcher.StartAsync(profile.Id)));
+        Assert.Equal(accountCount, runtime.StartCount);
+        Assert.Equal(profiles.Select(profile => profile.Id).Order(),
+            (await launcher.GetActiveProfileIdsAsync()).Order());
+
+        var firstSession = runtime.Sessions[0];
+        await Assert.ThrowsAsync<ProfileAlreadyRunningException>(() => launcher.StartAsync(profiles[0].Id));
+        Assert.Equal(1, firstSession.ActivateCount);
+        Assert.Equal(accountCount, runtime.StartCount);
+
+        await launcher.RestartAsync(profiles[0].Id);
+        Assert.Equal(1, firstSession.CloseCount);
+        Assert.Equal(accountCount + 1, runtime.StartCount);
+        Assert.Equal(accountCount, (await launcher.GetActiveProfileIdsAsync()).Count);
+
+        await launcher.CloseAllAsync();
+        Assert.All(runtime.Sessions, session => Assert.Equal(1, session.CloseCount));
     }
 
     [Fact]
@@ -159,6 +175,8 @@ public sealed class LauncherModuleTests
 
         public FakeSession? LastSession { get; private set; }
 
+        public List<FakeSession> Sessions { get; } = [];
+
         public Task<GamePageResolution> ResolveGamePageAsync() =>
             Task.FromResult(new GamePageResolution(
                 new Uri("https://sbai.4399.com/4399swf/upload_swf/ftp15/linxy/20150324/gun/v3680d.htm"),
@@ -171,6 +189,7 @@ public sealed class LauncherModuleTests
         {
             StartCount++;
             LastSession = new FakeSession(profile.Id);
+            Sessions.Add(LastSession);
             return Task.FromResult<IGameSession>(LastSession);
         }
     }

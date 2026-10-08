@@ -2,6 +2,7 @@ using BqtjLauncher.Domain;
 
 namespace BqtjLauncher.Application;
 
+/// <summary>管理本地账号及独立游戏会话，按账号去重并负责重启、关闭；多开数量由用户按电脑资源选择。</summary>
 public sealed class LauncherModule : IAsyncDisposable
 {
     private readonly IGameProfileRepository _profiles;
@@ -13,19 +14,14 @@ public sealed class LauncherModule : IAsyncDisposable
     public LauncherModule(
         IGameProfileRepository profiles,
         IGameRuntime runtime,
-        int maximumConcurrentSessions = 4,
         Func<DateTimeOffset>? clock = null)
     {
-        ArgumentOutOfRangeException.ThrowIfLessThan(maximumConcurrentSessions, 1);
         _profiles = profiles;
         _runtime = runtime;
-        MaximumConcurrentSessions = maximumConcurrentSessions;
         _clock = clock ?? (() => DateTimeOffset.UtcNow);
     }
 
     public event EventHandler? SessionsChanged;
-
-    public int MaximumConcurrentSessions { get; }
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default) =>
         await _profiles.InitializeAsync(cancellationToken);
@@ -74,6 +70,7 @@ public sealed class LauncherModule : IAsyncDisposable
         }
     }
 
+    /// <summary>串行登记启动结果以避免账号重复；不同账号不设固定数量上限。</summary>
     public async Task<Guid> StartAsync(
         Guid profileId,
         CancellationToken cancellationToken = default)
@@ -85,11 +82,6 @@ public sealed class LauncherModule : IAsyncDisposable
             {
                 existing.Activate();
                 throw new ProfileAlreadyRunningException(profileId);
-            }
-
-            if (_sessionsByProfile.Count >= MaximumConcurrentSessions)
-            {
-                throw new SessionLimitReachedException(MaximumConcurrentSessions);
             }
 
             var profile = await RequireProfileAsync(profileId, cancellationToken);

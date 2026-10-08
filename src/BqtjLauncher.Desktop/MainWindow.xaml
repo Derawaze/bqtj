@@ -204,7 +204,7 @@
                             <TextBlock Margin="0,10,0,0"
                                        Foreground="{StaticResource MutedTextBrush}"
                                        LineHeight="24"
-                                       Text="每个账号使用独立游戏窗口，最多可同时运行 4 个。&#x0a;同一账号只会打开一个游戏窗口。&#x0a;关闭或重启后需重新登录；刷新保留本次会话。"
+                                       Text="每个账号使用独立游戏窗口，可同时运行多个账号。&#x0a;同一账号只会打开一个游戏窗口。&#x0a;关闭或重启后需重新登录；刷新保留本次会话。"
                                        TextWrapping="Wrap" />
                         </StackPanel>
                     </Border>
