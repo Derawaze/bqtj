@@ -12,7 +12,7 @@
 
 用户已要求暂停原生迁移。codex/native-lightweight 的 69434dd 保留迁移与性能夹具检查点，不接入当前生产链，不继续面板/存储迁移。Maa 留在 codex/maa-development。
 
-dev 已验收源码为 5676c9f，包含大地址支持与既有释放/命令恢复修复。本轮合入 main，正式包 0.1.5 已构建并通过清单、x86、大地址标志、SHA 与三会话刷新/重启检查；按授权推送 main。公开 Release 与标签需另行明确授权。当前包与构建证据见 [当前交接](../NEXT_AGENT.md)。
+dev 已验收源码为 5676c9f，包含大地址支持与既有释放/命令恢复修复。main 已推送且 CI 通过，正式包 0.1.5 已通过清单、x86、大地址标志、SHA 与三会话刷新/重启检查。用户随后明确授权公开 GitHub Release，按既有标签工作流发布，说明只保留修复内容。当前包与构建证据见 [当前交接](../NEXT_AGENT.md)。
 
 加载时序检查须覆盖 SWF 在 ReadyState=4 后改写 Stage，不能用静态单帧替代。长时卡死/地图透明仍未稳定复现，诊断边界见 [加载诊断](diagnostics/flash-next-level-stall.md)。
 
