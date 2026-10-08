@@ -40,6 +40,7 @@ NativeCookieSessionProbe按stage/ready协议等待启动，测试本地HTTP与�
 
 全屏首次显示回归：`dotnet test tests/BqtjLauncher.Application.Tests/BqtjLauncher.Application.Tests.csproj -c Release --filter FullyQualifiedName~GameWindowStartupDisplayTests`。
 测试只创建并关闭自己的透明 WPF 窗口，不读取生产偏好/账号，不启动游戏；旧逻辑在最大化状态稳定抛出截图中的异常，修复后保留最大化并允许首次激活。运行偏好为全账号共享，实际游戏的全屏退出后再启动仍需用户验收。
+真实窗口回归放在非并发 `WpfUiTestGroup` 中，避免与故意停止 Dispatcher 消息处理的退出测试互扰；等待窗口/Dispatcher 清理后才报告完成。30 秒仅是夹具挂死上限，不是产品启动耗时指标；共享 CI 主机的冷启动不得以原 5 秒等待误判功能失败。
 命令恢复验证：`./tools/Test-NativeCommandRecovery.ps1 -CompilerPath <32位gcc路径>`。
 该脚本连接生产托管通道与原生命令线程，用隐藏虚构窗口模拟主线程短时阻塞，验证超时、迟到回执、取消、旧协议与控制器关闭；实际匿名进程管道也必须结束。输出仅 artifacts/dev/probes/command-recovery，不创建账号或加载游戏。夹具未加载 Flash，速度错误回执是预期结果。NativeCookieSessionProbe首个账号使用带编号刷新，其余使用旧命令，均需保持合成 Cookie。
 
