@@ -38,6 +38,8 @@ dotnet test BqtjLauncher.sln --configuration Release
 
 NativeCookieSessionProbe按stage/ready协议等待启动，测试本地HTTP与唯一虚构Cookie。若沙箱写入合成Cookie报12004，需在允许写入测试Cookie的环境运行，不能当作产品会话隔离失败或跳过断言后宣称通过。
 
+全屏首次显示回归：`dotnet test tests/BqtjLauncher.Application.Tests/BqtjLauncher.Application.Tests.csproj -c Release --filter FullyQualifiedName~GameWindowStartupDisplayTests`。
+测试只创建并关闭自己的透明 WPF 窗口，不读取生产偏好/账号，不启动游戏；旧逻辑在最大化状态稳定抛出截图中的异常，修复后保留最大化并允许首次激活。运行偏好为全账号共享，实际游戏的全屏退出后再启动仍需用户验收。
 命令恢复验证：`./tools/Test-NativeCommandRecovery.ps1 -CompilerPath <32位gcc路径>`。
 该脚本连接生产托管通道与原生命令线程，用隐藏虚构窗口模拟主线程短时阻塞，验证超时、迟到回执、取消、旧协议与控制器关闭；实际匿名进程管道也必须结束。输出仅 artifacts/dev/probes/command-recovery，不创建账号或加载游戏。夹具未加载 Flash，速度错误回执是预期结果。NativeCookieSessionProbe首个账号使用带编号刷新，其余使用旧命令，均需保持合成 Cookie。
 

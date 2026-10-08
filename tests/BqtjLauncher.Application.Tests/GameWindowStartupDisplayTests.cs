@@ -42,7 +42,8 @@ public sealed class GameWindowStartupDisplayTests
                 window?.Close();
                 Dispatcher.CurrentDispatcher.InvokeShutdown();
             }
-        }) { IsBackground = true };
+        })
+        { IsBackground = true };
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
         await completed.Task.WaitAsync(TimeSpan.FromSeconds(5));

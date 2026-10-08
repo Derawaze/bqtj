@@ -3,6 +3,7 @@
 ## 分支与发布状态
 
 - 正式版小bug修复在dev进行，基于v0.1.4（eb7cdbb）；Maa代码保留于codex/maa-development，不混入本轮修复。
+- 原生迁移按用户要求暂停，检查点只保留在 codex/native-lightweight；dev 继续维护原 WPF 启动器，不将迁移原型混入开发包。
 - 误发布v0.1.5已撤回，正式Release工作流暂停。dev验收通过且用户针对本次明确下令前，不合入/推送main，不启用正式构建；旧授权不延续。
 
 ## 开发阶段
