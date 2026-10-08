@@ -14,7 +14,7 @@
 
 ## 分支边界
 
-当前正式版修复在dev进行，基于v0.1.4；Maa工作保留于codex/maa-development。用户手动验收并针对本次明确下令前，不合入或推送main，不恢复正式发布工作流。
+当前正式版修复在dev进行，基于v0.1.5；Maa工作保留于codex/maa-development，原生迁移暂停于codex/native-lightweight。后续版本在用户手动验收并针对本次明确下令前，不合入或推送main，不创建正式标签或公开Release。
 
 ## 构建门槛
 
