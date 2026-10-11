@@ -15,6 +15,7 @@ namespace BqtjLauncher.Desktop;
 public partial class App : System.Windows.Application
 {
     private ServiceProvider? _services;
+    private AccountToolInstance? _accountToolInstance;
 
     protected override async void OnStartup(StartupEventArgs e)
     {
@@ -26,6 +27,19 @@ public partial class App : System.Windows.Application
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "BqtjLauncher");
             Directory.CreateDirectory(localData);
+            // 独立工具复用运行库和账号存储，不初始化游戏、面板或生产日志。
+            if (e.Args.Length == 1 && e.Args[0] == "--account-tool")
+            {
+                _accountToolInstance = AccountToolInstance.TryCreate();
+                if (_accountToolInstance is null) { Shutdown(); return; }
+                var accountStore = new SqliteGameProfileRepository(Path.Combine(localData, "launcher.db"));
+                await accountStore.InitializeAsync();
+                var accountTool = new AccountTransferWindow(new AccountTransferService(accountStore));
+                MainWindow = accountTool;
+                accountTool.Show();
+                _accountToolInstance.Listen(accountTool, accountTool.Reactivated);
+                return;
+            }
             Directory.CreateDirectory(Path.Combine(localData, "logs"));
 
             Log.Logger = new LoggerConfiguration()
@@ -118,6 +132,7 @@ public partial class App : System.Windows.Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        _accountToolInstance?.Dispose();
         _services?.DisposeAsync().AsTask().GetAwaiter().GetResult();
         Log.CloseAndFlush();
         base.OnExit(e);

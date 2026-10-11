@@ -12,6 +12,8 @@
 | 面板/账号编辑/组合根 | src/BqtjLauncher.Desktop/ |
 | 账号与会话规则 | src/BqtjLauncher.Domain/、src/BqtjLauncher.Application/LauncherModule.cs |
 | 明文凭据与事务 | src/BqtjLauncher.Application/IAccountEditor.cs、src/BqtjLauncher.Infrastructure/SqliteAccountEditor.cs |
+| 账号管理、搜索/原位编辑/多选删除、批量格式与审核 | Application/AccountTransfer.cs、Infrastructure/SqliteAccountTransfer.cs、Desktop/AccountTransferWindow.xaml.cs |
+| 独立工具入口与单实例唤起 | native/AccountTool/account_tool_launcher.c、Desktop/AccountToolInstance.cs、App.xaml.cs 的 --account-tool 模式 |
 | 容器工具栏、加载层 | src/BqtjLauncher.Runtime.Flash/FlashHostWindow.cs |
 | 首次透明显示、全屏激活约束 | src/BqtjLauncher.Runtime.Flash/GameWindowStartupDisplay.cs |
 | 命令超时、取消与回执编号 | src/BqtjLauncher.Runtime.Flash/NativeHostCommandChannel.cs |
@@ -29,7 +31,7 @@
 
 - 应用层通过 IGameRuntime / IGameSession 使用容器，不依赖具体WPF/COM。领域层不引用UI和存储。
 - 每个宿主首次创建IE前启用进程内Cookie模式，失败停止；刷新重建浏览器但不重置会话模式。
-- 管道传凭据用限长UTF-16十六进制，防止分隔符注入；这是编码而非加密。密码不进命令行、URL、剪贴板或日志。
+- 管道传凭据用限长UTF-16十六进制，防止分隔符注入；这是编码而非加密。凭据传输不进命令行、URL或日志，自动登录不通过剪贴板转移密码；账号管理工具按用户选择明文展示。
 - 填充限定可信HTTPS文档、同表单字段和提交目标；保留用户输入，完成一次点击后不自动重试。
 - 显示按原生客户区计算整数百分比和居中黑边；WPF负责窗口档位与加载层，就绪等待后固定1秒黑底。首次全屏显示保留最大化并允许激活，避免 WPF 的 ShowActivated=false 冲突；普通模式透明初始化时不激活。
 - 游戏包装页按版本发布，入口地址是运行时数据：每次启动读取4399官方游戏页得到当前版本路径，换到可直连主机后交给原生宿主；官方页不可用时依次回退上次成功解析的缓存和随包兜底地址。

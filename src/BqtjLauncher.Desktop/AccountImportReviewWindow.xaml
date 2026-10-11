@@ -1,0 +1,33 @@
+<Window x:Class="BqtjLauncher.Desktop.AccountImportReviewWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="审核重复账号" Width="500" SizeToContent="Height" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner" Background="{StaticResource WindowBackground}"
+        Foreground="{StaticResource TextBrush}">
+    <StackPanel Margin="24">
+        <TextBlock x:Name="Summary" TextWrapping="Wrap" FontWeight="SemiBold" />
+        <Border Style="{StaticResource CardStyle}" Margin="0,12,0,16">
+            <TextBlock x:Name="ExistingSummary" TextWrapping="Wrap" />
+        </Border>
+        <TextBlock Text="替换内容（可手动修改）" Style="{StaticResource SectionTitleStyle}" />
+        <TextBlock Text="名称" Margin="0,12,0,4" />
+        <TextBox x:Name="DisplayNameInput" MaxLength="40" AutomationProperties.Name="审核名称" />
+        <TextBlock Text="4399账号" Margin="0,12,0,4" />
+        <TextBox x:Name="UsernameInput" MaxLength="256" AutomationProperties.Name="审核账号" />
+        <TextBlock Text="新密码" Margin="0,12,0,4" />
+        <Grid>
+            <PasswordBox x:Name="PasswordInput" MaxLength="1024" Padding="10" Background="#141B27" Foreground="White" AutomationProperties.Name="审核新密码" />
+            <TextBox x:Name="VisiblePasswordInput" MaxLength="1024" Visibility="Collapsed" />
+        </Grid>
+        <CheckBox x:Name="ShowPasswordInput" Content="显示新密码" Margin="0,8,0,0" Foreground="{StaticResource TextBrush}"
+                  Checked="ShowPassword_Changed" Unchecked="ShowPassword_Changed" />
+        <TextBlock Text="点击替换后更新原记录的名称、账号和密码；原记录的启动信息保留。"
+                   Margin="0,12,0,0" TextWrapping="Wrap" Foreground="{StaticResource MutedTextBrush}" />
+        <TextBlock x:Name="Feedback" Margin="0,12,0,4" TextWrapping="Wrap" Foreground="#FFB5A8" />
+        <StackPanel x:Name="Actions" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Content="替换原记录" Click="Replace_Click" IsDefault="True" Style="{StaticResource PrimaryButtonStyle}" />
+            <Button Content="跳过此条" Click="Skip_Click" />
+            <Button Content="稍后审核" IsCancel="True" />
+        </StackPanel>
+    </StackPanel>
+</Window>

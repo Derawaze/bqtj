@@ -92,3 +92,10 @@ if (($characteristics -band 0x20) -eq 0) {
 }
 
 "Built native Flash host: $output"
+
+# 独立账号工具只提供小型入口，共用已有自包含程序，避免重复携带 .NET 运行库。
+$accountToolOutput = Join-Path $OutputDirectory 'BqtjAccountTool.exe'
+& $compiler -std=c11 -Os -s -Wall -Wextra -municode -mwindows `
+    -o $accountToolOutput (Join-Path $repositoryRoot 'native/AccountTool/account_tool_launcher.c') -lshell32
+if ($LASTEXITCODE -ne 0) { throw "账号工具入口编译失败，退出码：$LASTEXITCODE。" }
+"Built account tool entry: $accountToolOutput"

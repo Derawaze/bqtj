@@ -15,7 +15,7 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 function Get-ZipEntryPeMachine {
     param([System.IO.Compression.ZipArchiveEntry] $Entry)
 
-    # 只读取两个入口的 PE 头，不把整包解压到磁盘。
+    # 只读取入口的 PE 头，不把整包解压到磁盘。
     $entryStream = $Entry.Open()
     $memoryStream = [System.IO.MemoryStream]::new()
     try {
@@ -32,10 +32,11 @@ function Get-ZipEntryPeMachine {
     }
 }
 
-# 热更新包是扁平结构：两个入口程序加一份修复说明，全部覆盖到安装目录。
+# 热更新包是扁平结构：三个入口程序加一份说明，全部覆盖到安装目录。
 $allowedFiles = @(
     'BqtjLauncher.Desktop.exe',
     'BqtjNativeFlashHost.exe',
+    'BqtjAccountTool.exe',
     'HOTFIX-README.md'
 )
 
@@ -95,7 +96,7 @@ try {
         throw '热更新说明未替换版本号占位符。'
     }
 
-    foreach ($productExecutable in @('BqtjLauncher.Desktop.exe', 'BqtjNativeFlashHost.exe')) {
+    foreach ($productExecutable in @('BqtjLauncher.Desktop.exe', 'BqtjNativeFlashHost.exe', 'BqtjAccountTool.exe')) {
         $entry = $fileEntries |
             Where-Object { $_.FullName -ieq $productExecutable } |
             Select-Object -First 1

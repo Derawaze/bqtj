@@ -8,6 +8,7 @@
 
 ## 开发阶段
 
+- 本轮账号管理工具开发包 20261011132219 已于 2026-10-11 获用户验收，仅授权提交并推送 dev；尚未授权正式构建或发布。包新增 BqtjAccountTool.exe，复用面板内的独立工具模式，不额外携带 .NET。最新公开版仍为 v0.1.5。
 - 所有可交付开发产物只写入仓库 `artifacts/dev/`；日常预览固定 `slot-a` / `slot-b`，原生中间产物也放在该目录。`src/tests` 下的 `bin/obj` 是编译缓存，不是交付包。
 - 默认使用 `Start-DevLauncher.ps1 -BuildOnly` 或开发监视器。需要 ZIP/覆盖更新包时使用 `Publish-Release.ps1 -Development -Version 0.0.0-dev.<UTC时间戳>`，可加 `-HotUpdate`；时间戳格式 `yyyyMMddHHmmss`。
 - 开发迭代不递增正式版本，不创建正式标签、Release 或 `release-v*.md`。CI 也只生成 dev 包。

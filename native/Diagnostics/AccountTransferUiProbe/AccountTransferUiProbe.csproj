@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>BqtjLauncher.Desktop</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../src/BqtjLauncher.Infrastructure/BqtjLauncher.Infrastructure.csproj" />
+    <!-- 链接真实界面源码；探针自己提供 Application，只读虚构库，不执行生产启动入口。 -->
+    <Page Include="../../../src/BqtjLauncher.Desktop/AccountTransferWindow.xaml" Link="AccountTransferWindow.xaml" />
+    <Compile Include="../../../src/BqtjLauncher.Desktop/AccountTransferWindow.xaml.cs" Link="AccountTransferWindow.xaml.cs" />
+    <Page Include="../../../src/BqtjLauncher.Desktop/AccountImportReviewWindow.xaml" Link="AccountImportReviewWindow.xaml" />
+    <Compile Include="../../../src/BqtjLauncher.Desktop/AccountImportReviewWindow.xaml.cs" Link="AccountImportReviewWindow.xaml.cs" />
+    <Page Include="../../../src/BqtjLauncher.Desktop/AccountEditorWindow.xaml" Link="AccountEditorWindow.xaml" />
+    <Compile Include="../../../src/BqtjLauncher.Desktop/AccountEditorWindow.xaml.cs" Link="AccountEditorWindow.xaml.cs" />
+    <Compile Include="../../../src/BqtjLauncher.Desktop/AccountToolLauncher.cs" Link="AccountToolLauncher.cs" />
+    <Compile Include="../../../src/BqtjLauncher.Desktop/AccountToolInstance.cs" Link="AccountToolInstance.cs" />
+    <Resource Include="../../../src/BqtjLauncher.Desktop/Assets/launcher.ico" Link="Assets/launcher.ico" />
+    <Resource Include="../../../src/BqtjLauncher.Desktop/Assets/launcher.png" Link="Assets/launcher.png" />
+  </ItemGroup>
+</Project>

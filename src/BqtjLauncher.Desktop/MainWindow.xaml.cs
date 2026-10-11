@@ -15,6 +15,8 @@ public partial class MainWindow : Window
 {
     private readonly MainWindowViewModel _viewModel;
     private readonly BqtjLauncher.Application.IAccountEditor _accountEditor;
+    private bool _ready;
+    private bool _refreshing;
 
     /// <summary>只打开日志子目录，避免引导用户上传包含明文凭据的整个数据目录。</summary>
     private void OpenLogs_Click(object sender, RoutedEventArgs e)
@@ -66,10 +68,21 @@ public partial class MainWindow : Window
         _viewModel = viewModel;
         _accountEditor = accountEditor;
         DataContext = viewModel;
-        Loaded += async (_, _) => await _viewModel.InitializeAsync();
+        Loaded += async (_, _) => { await _viewModel.InitializeAsync(); _ready = true; };
+        Activated += MainWindow_Activated;
         // 首次显示后启动独立异步检查，不等待游戏入口解析，也不在账号容器中重复检查。
         ContentRendered += MainWindow_ContentRendered;
         Closed += (_, _) => _viewModel.CheckForUpdatesCommand.Cancel();
+    }
+
+    /// <summary>从独立工具返回面板时更新账号列表，保留当前选中项，不重新查询游戏版本。</summary>
+    private async void MainWindow_Activated(object? sender, EventArgs e)
+    {
+        if (!_ready || _refreshing || _viewModel.IsBusy) return;
+        _refreshing = true;
+        try { await _viewModel.RefreshAsync(); }
+        catch (Exception) { _viewModel.StatusText = "账号列表更新失败，请稍后重试。"; }
+        finally { _refreshing = false; }
     }
 
     private void MainWindow_ContentRendered(object? sender, EventArgs e)
@@ -97,8 +110,9 @@ public partial class MainWindow : Window
     {
         if (_viewModel.IsBusy) return;
         var dialog = new AccountEditorWindow(_accountEditor, Guid.Empty, string.Empty) { Owner = this };
-        if (dialog.ShowDialog() != true) return;
-        await _viewModel.RefreshAsync(dialog.SavedAccountId);
+        var saved = dialog.ShowDialog() == true;
+        if (saved || dialog.AccountToolOpened)
+            await _viewModel.RefreshAsync(saved ? dialog.SavedAccountId : null);
     }
 
     /// <summary>固定打开时的账号 ID，避免列表刷新后编辑到另一账号。</summary>
@@ -107,9 +121,17 @@ public partial class MainWindow : Window
         var selected = _viewModel.SelectedProfile;
         if (selected is null || _viewModel.IsBusy) return;
         var dialog = new AccountEditorWindow(_accountEditor, selected.Id, selected.DisplayName) { Owner = this };
-        if (dialog.ShowDialog() == true) await _viewModel.RefreshAsync(selected.Id);
+        var saved = dialog.ShowDialog() == true;
+        if (saved || dialog.AccountToolOpened) await _viewModel.RefreshAsync(selected.Id);
     }
 
+    /// <summary>直接打开或激活同一个账号管理工具，独立进程不依附面板生命周期。</summary>
+    private void ManageAccounts_Click(object sender, RoutedEventArgs e)
+    {
+        try { AccountToolLauncher.Open(); }
+        catch (Exception exception) when (exception is Win32Exception or InvalidOperationException)
+        { _viewModel.StatusText = "无法打开账号管理工具，请尝试双击包内 BqtjAccountTool.exe。"; }
+    }
     private async void DeleteSelected_Click(object sender, RoutedEventArgs e)
     {
         if (_viewModel.SelectedProfile is null)

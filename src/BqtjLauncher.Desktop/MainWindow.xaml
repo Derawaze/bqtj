@@ -53,9 +53,9 @@
         <!-- 主工作区保持“选择账号 → 执行操作”的稳定阅读顺序。 -->
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="330" />
+                <ColumnDefinition Width="0.48*" MinWidth="370" />
                 <ColumnDefinition Width="18" />
-                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="0.52*" />
             </Grid.ColumnDefinitions>
 
             <Border Grid.Column="0" Style="{StaticResource CardStyle}">
@@ -78,6 +78,7 @@
                                     Content="新增账号" />
                             <Button Click="EditSelected_Click"
                                     Content="编辑账号" />
+                            <Button Click="ManageAccounts_Click" Content="管理账号" />
                             <Button Click="DeleteSelected_Click"
                                     Content="删除"
                                     Style="{StaticResource DangerButtonStyle}" />

@@ -75,6 +75,11 @@ jobs:
           BQTJ_MINGW32_GCC: ${{ steps.msys2.outputs.msys2-location }}\mingw32\bin\gcc.exe
         run: ./tools/Test-NativeCommandRecovery.ps1 -CompilerPath $env:BQTJ_MINGW32_GCC
 
+      - name: Verify account manager UI and single instance
+        env:
+          BQTJ_MINGW32_GCC: ${{ steps.msys2.outputs.msys2-location }}\mingw32\bin\gcc.exe
+        run: ./tools/Test-AccountManager.ps1 -CompilerPath $env:BQTJ_MINGW32_GCC
+
       - name: Build self-contained Windows package
         env:
           BQTJ_MINGW32_GCC: ${{ steps.msys2.outputs.msys2-location }}\mingw32\bin\gcc.exe

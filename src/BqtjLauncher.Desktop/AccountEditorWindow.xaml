@@ -15,12 +15,14 @@
             <TextBox x:Name="VisiblePasswordInput" MaxLength="1024" Visibility="Collapsed" AutomationProperties.Name="可见密码" />
         </Grid>
         <CheckBox x:Name="ShowPasswordInput" Content="显示密码" Foreground="{StaticResource TextBrush}" Checked="ShowPassword_Changed" Unchecked="ShowPassword_Changed" />
-        <TextBlock Text="密码留空表示保留原密码。" Margin="0,6,0,0" Foreground="{StaticResource MutedTextBrush}" />
+        <TextBlock x:Name="PasswordHint" Margin="0,6,0,0" TextWrapping="Wrap" Foreground="{StaticResource MutedTextBrush}" />
         <CheckBox x:Name="ClearInput" Content="清除已保存的4399账号和密码" Foreground="{StaticResource TextBrush}" Margin="0,16,0,12"
                   Checked="ClearInput_Changed" Unchecked="ClearInput_Changed" />
         <TextBlock Text="账号密码将明文保存在本机，下次启动时自动填充并点击登录；验证码或登录失败时请手动处理。"
                    TextWrapping="Wrap" Foreground="{StaticResource MutedTextBrush}" />
         <TextBlock x:Name="Feedback" Margin="0,12,0,8" TextWrapping="Wrap" Foreground="#FFB5A8" />
+        <Button x:Name="BatchToolButton" Content="打开批量管理工具" Click="OpenBatchTool_Click"
+                HorizontalAlignment="Left" Margin="0,0,0,12" />
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
             <Button x:Name="SaveButton" Content="保存" Click="Save_Click" IsDefault="True" IsEnabled="False" />
             <Button x:Name="CancelButton" Content="取消" IsCancel="True" />

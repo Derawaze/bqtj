@@ -16,7 +16,7 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 function Get-ZipEntryPeMachine {
     param([System.IO.Compression.ZipArchiveEntry] $Entry)
 
-    # 只读取两个产品入口的 PE 头；不把整包解压到磁盘，避免校验阶段产生额外可执行文件。
+    # 只读取产品入口的 PE 头；不把整包解压到磁盘，避免校验阶段产生额外可执行文件。
     $entryStream = $Entry.Open()
     $memoryStream = [System.IO.MemoryStream]::new()
     try {
@@ -79,6 +79,7 @@ try {
     $requiredFiles = @(
         'BqtjLauncher.Desktop.exe',
         'BqtjNativeFlashHost.exe',
+        'BqtjAccountTool.exe',
         'README.md',
         'THIRD_PARTY_NOTICES.md'
     )
@@ -92,12 +93,12 @@ try {
         }
     }
 
-    # 自包含运行库及 SQLite 已嵌入主程序，正式包只允许两个入口和说明文件。
+    # 自包含运行库及 SQLite 已嵌入主程序，包只允许三个入口和说明文件。
     foreach ($relativePath in $relativePaths) {
         if ($relativePath -notin $requiredFiles) { throw "精简发布包包含额外文件：$relativePath" }
     }
 
-    foreach ($productExecutable in @('BqtjLauncher.Desktop.exe', 'BqtjNativeFlashHost.exe')) {
+    foreach ($productExecutable in @('BqtjLauncher.Desktop.exe', 'BqtjNativeFlashHost.exe', 'BqtjAccountTool.exe')) {
         $entry = $fileEntries |
             Where-Object { $_.FullName.Replace('\', '/') -ieq "$rootName/$productExecutable" } |
             Select-Object -First 1

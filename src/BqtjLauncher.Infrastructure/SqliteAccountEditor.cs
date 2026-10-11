@@ -16,6 +16,7 @@ public sealed partial class SqliteGameProfileRepository
             throw new ArgumentException("请同时填写账号和密码，或同时留空。");
         await using var connection = await OpenAsync(default);
         using var transaction = connection.BeginTransaction();
+        if (username.Length != 0) await EnsureUniqueUsernameAsync(connection, transaction, username, profile.Id);
         using var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = "INSERT INTO game_profiles(id,display_name,browser_profile_name,created_utc) VALUES($id,$name,$browser,$created)";
@@ -51,6 +52,7 @@ public sealed partial class SqliteGameProfileRepository
         return await reader.ReadAsync() ? new AccountCredential(reader.GetString(0), reader.GetString(1)) : null;
     }
 
+    /// <summary>同事务编辑名称与唯一账号；空密码沿用原值，显式清除才删除凭据。</summary>
     public async Task SaveAsync(Guid accountId, string displayName, string username, string replacementPassword, bool clearCredential)
     {
         var normalizedName = GameProfile.Create(displayName, DateTimeOffset.UtcNow).DisplayName;
@@ -72,6 +74,7 @@ public sealed partial class SqliteGameProfileRepository
         }
         else
         {
+            if (username.Length != 0) await EnsureUniqueUsernameAsync(connection, transaction, username, accountId);
             var previous = replacementPassword.Length == 0
                 ? await ReadCredentialAsync(connection, transaction, accountId) : null;
             if (username.Length != 0 || replacementPassword.Length != 0 || previous is not null)

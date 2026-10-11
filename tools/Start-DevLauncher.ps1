@@ -68,6 +68,7 @@ if (-not $NoBuild) {
         -LiteralPath (Join-Path $nativeOutputDirectory 'BqtjNativeFlashHost.exe') `
         -Destination $outputDirectory `
         -Force
+    Copy-Item -LiteralPath (Join-Path $nativeOutputDirectory 'BqtjAccountTool.exe') -Destination $outputDirectory -Force
     [IO.File]::WriteAllText($readyPath, [DateTimeOffset]::UtcNow.ToString('o'))
 }
 else {

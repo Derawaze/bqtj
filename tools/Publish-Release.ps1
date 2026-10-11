@@ -7,7 +7,7 @@
     [switch] $NoRestore,
     [switch] $Development,
     [switch] $ReleaseApproved,
-    # 热更新包只交付两个入口程序和修复说明，供用户覆盖到已解压的安装目录。
+    # 热更新包交付三个入口程序和说明，供用户覆盖到已解压的安装目录。
     [switch] $HotUpdate
 )
 
@@ -93,9 +93,12 @@ try {
         -Destination $packageDirectory `
         -Force
 
+    Copy-Item -LiteralPath (Join-Path $nativeDirectory 'BqtjAccountTool.exe') -Destination $packageDirectory -Force
+
     $requiredFiles = @(
         'BqtjLauncher.Desktop.exe',
-        'BqtjNativeFlashHost.exe'
+        'BqtjNativeFlashHost.exe',
+        'BqtjAccountTool.exe'
     )
     foreach ($requiredFile in $requiredFiles) {
         $requiredPath = Join-Path $packageDirectory $requiredFile
@@ -121,7 +124,7 @@ try {
     }
 
     if ($HotUpdate) {
-        # 热更新只覆盖两个入口程序：自包含主程序会重新解压运行库，原生宿主直接替换。
+        # 覆盖三个入口程序；自包含主程序保留独立工具 UI，避免额外一份运行库。
         $hotUpdateNoticeName = 'HOTFIX-README.md'
         $hotUpdateNoticeSource = Join-Path $PSScriptRoot 'Publish-HotUpdate.README.md'
         # PowerShell 5.1 的 Get-Content 默认按 ANSI 读取，会把中文模板写成乱码；这里显式按 UTF-8 读。

@@ -44,6 +44,16 @@ NativeCookieSessionProbe按stage/ready协议等待启动，测试本地HTTP与�
 命令恢复验证：`./tools/Test-NativeCommandRecovery.ps1 -CompilerPath <32位gcc路径>`。
 该脚本连接生产托管通道与原生命令线程，用隐藏虚构窗口模拟主线程短时阻塞，验证超时、迟到回执、取消、旧协议与控制器关闭；实际匿名进程管道也必须结束。输出仅 artifacts/dev/probes/command-recovery，不创建账号或加载游戏。夹具未加载 Flash，速度错误回执是预期结果。NativeCookieSessionProbe首个账号使用带编号刷新，其余使用旧命令，均需保持合成 Cookie。
 
+## 独立账号工具验证
+
+`AccountTransferTests` 使用临时虚构数据库，覆盖格式解析、文件内重复、续行导入、审核前不覆盖、人工替换保留 ID/启动信息、并发写入去重、导出往返、原位编辑保留密码及选中记录级联删除。历史重复数据不会在初始化时删除或合并；若审核替换仍与另一条旧记录重复，用户须修改账号或在面板中手动清理。
+
+`./tools/Test-AccountManager.ps1 -CompilerPath <32位gcc路径>` 编译并运行 `native/Diagnostics/AccountTransferUiProbe`。探针链接实际三个窗口和单实例协调器，使用自己的 Application、唯一事件命名空间及虚构库，不调用生产启动入口。它验证原生/托管唤起、次进程退出、最小化及最大化恢复、新增/编辑入口、导入续行、人工审核、三列原位编辑/取消/重复回滚、名称/账号搜索、多选实际删除，以及默认/最小窗口布局与滚动条。面板 XAML 仅绑定虚构数据作布局检查，不初始化生产服务。
+
+结果与图片只写 `artifacts/dev/probes/account-manager-ui-*`，入口二进制放在带空格的 `account manager ui` 目录。删除确认自动操作只匹配探针自己的进程；环境变量结束后恢复。该脚本已接入 Windows CI，远程结果仍需实际运行确认。UI 探针不是发行程序，不得拿它启动游戏。
+
+独立入口 `BqtjAccountTool.exe` 与主程序同目录，只传 `--account-tool`；该模式不创建面板、游戏或生产日志；当前 Windows 会话通过互斥锁保证一个工具，命名事件只通知激活，不传凭据。构建脚本和完整/覆盖包清单均检查三个 x86 入口；运行库仍只有主程序内的一份。
+
 ## 构建与交付
 
 先阅读 [构建与版本规范](build-policy.md)，这是目录、版本和人工验收门槛的唯一规范。
@@ -57,7 +67,7 @@ $devVersion = '0.0.0-dev.' + [DateTime]::UtcNow.ToString('yyyyMMddHHmmss')
 # ./tools/Publish-Release.ps1 -ReleaseApproved -Version <已核对的新正式版本>
 ```
 
-完整包包含两个入口程序、README、GPLv3 许可证和第三方声明；覆盖更新包包含两个入口程序和 HOTFIX-README.md，原安装目录的许可证及第三方声明必须保留。两种包均校验清单、x86入口及 SHA256，不分发 Flash 或用户数据。构建配置 Release 不代表允许正式发行；是否正式交付由模式与人工门槛决定。
+完整包包含三个入口程序（面板、原生宿主、独立账号工具）、README、GPLv3 许可证和第三方声明；覆盖更新包包含三个入口程序和 HOTFIX-README.md，原安装目录的许可证及第三方声明必须保留。两种包均校验清单、x86入口及 SHA256，不分发 Flash 或用户数据。构建配置 Release 不代表允许正式发行；是否正式交付由模式与人工门槛决定。
 若使用 -NoRestore 且提示缺少win-x86资产，先运行：
 ```powershell
 dotnet restore src/BqtjLauncher.Desktop/BqtjLauncher.Desktop.csproj -r win-x86 -p:PublishSingleFile=true

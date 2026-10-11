@@ -31,7 +31,7 @@ function Stop-OwnedPreview {
 # 只监视源码和构建配置，排除输出目录，避免构建自己触发下一轮。
 function Get-SourceStamp {
     $files = @(
-        foreach ($folder in @('src', 'native/FlashHost', 'tools')) {
+        foreach ($folder in @('src', 'native/FlashHost', 'native/AccountTool', 'tools')) {
             Get-ChildItem -LiteralPath (Join-Path $repositoryRoot $folder) -File -Recurse |
                 Where-Object { $_.FullName -notmatch '[\\/](bin|obj)[\\/]' }
         }
