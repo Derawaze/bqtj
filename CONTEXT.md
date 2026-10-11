@@ -21,7 +21,7 @@
 - 多开不设固定账号数量上限，由用户按电脑资源选择；同一账号记录只打开一个游戏窗口。
 - 全屏/最大化等比例居中并留黑边；加载就绪后固定1秒黑底。
 - 本地变速只作用于当前原生宿主中的 Flash 计时，不影响系统或服务端时间。
-- 本地账号数据位于 %LOCALAPPDATA%/BqtjLauncher，清理构建产物不得触碰。
+- 本地账号与明文凭据保存于 `%LOCALAPPDATA%\BqtjLauncher\launcher.db`，清理构建产物不得触碰。
 
 实现定位见 [架构](docs/architecture.md)，技术理由按需查 [文档索引](docs/README.md)。
 

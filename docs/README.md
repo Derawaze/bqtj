@@ -15,3 +15,5 @@
 | 当前远程正式版修复内容 | [v0.1.5](release-v0.1.5.md) |
 
 根 [README](../README.md) 介绍软件，项目采用已有 [GPLv3](../LICENSE) 许可证。[第三方声明](../THIRD_PARTY_NOTICES.md) 随完整包发布；[覆盖更新说明](../tools/Publish-HotUpdate.README.md) 由打包脚本读取。分析用第三方二进制、账号库、日志、开发包均不进入 Git。
+
+当前只保留 v0.1.5 发行说明；旧版发行内容在 [GitHub Releases](https://github.com/Derawaze/bqtj/releases) 与 Git 历史查阅。已废弃工具不列为当前操作入口，仍有效的诊断源码与结论保留。

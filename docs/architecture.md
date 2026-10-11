@@ -40,7 +40,7 @@
 
 ## 本地数据
 
-%LOCALAPPDATA%/BqtjLauncher：
+`%LOCALAPPDATA%\BqtjLauncher`（当前 Windows 用户的本地数据目录）：
 
 - launcher.db：账号记录及按Guid关联的明文凭据；创建/编辑用事务，删除账号级联删除凭据。
 - runtime-preferences.json：共享窗口档位、静音。
@@ -48,7 +48,7 @@
 - speed/：各账号上一档变速。
 - logs/：运行日志，不得包含凭据。
 
-现有AppContainer兼容性类和 native/Diagnostics 为探针，不是正式隔离方案。当前只保证已验证的运行时Cookie行为，不外推Flash全部本地存储。
+AppContainer 兼容性类未接入生产链；已否决方案的独立启动程序及诊断入口已清理，失败原因保留于 [技术决策](decisions.md)。native/Diagnostics 保留当前回归工具，只使用合成数据。当前只保证已验证的运行时Cookie行为，不外推Flash全部本地存储。
 
 
 

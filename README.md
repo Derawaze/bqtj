@@ -10,7 +10,7 @@
 
 解压发行包后运行 `BqtjLauncher.Desktop.exe`，两个 EXE 请放在同一目录。自带 .NET，运行游戏仍需本机已安装并注册的 32 位 Flash ActiveX。
 
-账号密码按用户选择明文保存在本机；验证码或登录错误需手动处理。本软件为第三方工具，与游戏运营方无隶属关系。
+账号密码按用户选择，以明文保存在当前 Windows 用户的 `%LOCALAPPDATA%\BqtjLauncher\launcher.db`（SQLite 数据库，通常为 `C:\Users\<用户名>\AppData\Local\BqtjLauncher\launcher.db`）。在资源管理器地址栏输入 `%LOCALAPPDATA%\BqtjLauncher` 即可打开所在目录。验证码或登录错误需手动处理。本软件为第三方工具，与游戏运营方无隶属关系。
 
 开发与构建见 [在线文档](https://github.com/Derawaze/bqtj/tree/main/docs)。项目采用已有 [GPLv3 许可证](LICENSE)，发行包保留 [第三方声明](THIRD_PARTY_NOTICES.md)，不包含 Flash、游戏资源或用户数据。
 

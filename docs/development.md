@@ -39,7 +39,7 @@ dotnet test BqtjLauncher.sln --configuration Release
 NativeCookieSessionProbe按stage/ready协议等待启动，测试本地HTTP与唯一虚构Cookie。若沙箱写入合成Cookie报12004，需在允许写入测试Cookie的环境运行，不能当作产品会话隔离失败或跳过断言后宣称通过。
 
 全屏首次显示回归：`dotnet test tests/BqtjLauncher.Application.Tests/BqtjLauncher.Application.Tests.csproj -c Release --filter FullyQualifiedName~GameWindowStartupDisplayTests`。
-测试只创建并关闭自己的透明 WPF 窗口，不读取生产偏好/账号，不启动游戏；旧逻辑在最大化状态稳定抛出截图中的异常，修复后保留最大化并允许首次激活。运行偏好为全账号共享，实际游戏的全屏退出后再启动仍需用户验收。
+测试只创建并关闭自己的透明 WPF 窗口，不读取生产偏好/账号，不启动游戏；旧逻辑在最大化状态稳定抛出截图中的异常，修复后保留最大化并允许首次激活。运行偏好为全账号共享；修改此路径后，应重新验收实际游戏全屏退出后再启动的行为。
 真实窗口回归放在非并发 `WpfUiTestGroup` 中，避免与故意停止 Dispatcher 消息处理的退出测试互扰；等待窗口/Dispatcher 清理后才报告完成。30 秒仅是夹具挂死上限，不是产品启动耗时指标；共享 CI 主机的冷启动不得以原 5 秒等待误判功能失败。
 命令恢复验证：`./tools/Test-NativeCommandRecovery.ps1 -CompilerPath <32位gcc路径>`。
 该脚本连接生产托管通道与原生命令线程，用隐藏虚构窗口模拟主线程短时阻塞，验证超时、迟到回执、取消、旧协议与控制器关闭；实际匿名进程管道也必须结束。输出仅 artifacts/dev/probes/command-recovery，不创建账号或加载游戏。夹具未加载 Flash，速度错误回执是预期结果。NativeCookieSessionProbe首个账号使用带编号刷新，其余使用旧命令，均需保持合成 Cookie。
@@ -71,6 +71,8 @@ dotnet restore src/BqtjLauncher.Desktop/BqtjLauncher.Desktop.csproj -r win-x86 -
 ```
 
 原图保存在Desktop/Assets/icon-source.jpg。清理仅处理仓库生成目录，默认保留全部开发验收包和发行包，跳过运行中产物、疑似用户数据和重解析点；不要改用全仓库删除命令。bin/obj清理后需重新restore。
+
+用户要求清理旧包时，单独核对过期版本及其 ZIP、SHA256、解压目录与验收记录，再按仓库内绝对路径删除；保留当前验收包及最新正式交付包。隔离方案原型、旧固定游戏地址 UI 脚本及第三方变速 DLL 探针已退出当前工具集，历史原因留在技术决策与回归文档；不要恢复这些入口代替现有验证。
 
 ## 远程交付
 
