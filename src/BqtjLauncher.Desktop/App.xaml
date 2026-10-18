@@ -3,6 +3,41 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              ShutdownMode="OnMainWindowClose">
     <Application.Resources>
+        <!-- 脚本下拉选择的弹层和条目沿用深色主题。 -->
+        <Style TargetType="ComboBox">
+            <Setter Property="Foreground" Value="#E8EDF5"/>
+            <Setter Property="MinHeight" Value="34"/>
+            <Setter Property="Template"><Setter.Value>
+                <ControlTemplate TargetType="ComboBox">
+                    <Grid>
+                        <ToggleButton Focusable="False" IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
+                            <ToggleButton.Template><ControlTemplate TargetType="ToggleButton"><Border Background="#243249" BorderBrush="#45566D" BorderThickness="1" CornerRadius="5"/></ControlTemplate></ToggleButton.Template>
+                        </ToggleButton>
+                        <ContentPresenter Margin="10,6,28,6" VerticalAlignment="Center" IsHitTestVisible="False" Content="{TemplateBinding SelectionBoxItem}" ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"/>
+                        <TextBlock Text="▾" Foreground="#AAB9CD" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,10,0" IsHitTestVisible="False"/>
+                        <Popup x:Name="PART_Popup" IsOpen="{TemplateBinding IsDropDownOpen}" Placement="Bottom" AllowsTransparency="True">
+                            <Border Background="#182235" BorderBrush="#45566D" BorderThickness="1" MinWidth="{TemplateBinding ActualWidth}"><ScrollViewer MaxHeight="260"><ItemsPresenter/></ScrollViewer></Border>
+                        </Popup>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value></Setter>
+        </Style>
+        <Style TargetType="ComboBoxItem">
+            <Setter Property="Foreground" Value="#E8EDF5"/>
+            <Setter Property="Template"><Setter.Value>
+                <ControlTemplate TargetType="ComboBoxItem">
+                    <Border x:Name="ItemBorder" Background="Transparent" Padding="10,7"><ContentPresenter/></Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsHighlighted" Value="True"><Setter TargetName="ItemBorder" Property="Background" Value="#29466B"/></Trigger>
+                        <Trigger Property="IsSelected" Value="True"><Setter TargetName="ItemBorder" Property="Background" Value="#29466B"/></Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value></Setter>
+        </Style>
+        <Style TargetType="DataGridColumnHeader">
+            <Setter Property="Foreground" Value="#E8EDF5"/><Setter Property="Background" Value="#26354A"/>
+            <Setter Property="Padding" Value="8,6"/><Setter Property="BorderBrush" Value="#35455C"/>
+        </Style>
         <!-- 正式版采用低对比深色层级；主色仅用于选中态和首要操作。 -->
         <SolidColorBrush x:Key="WindowBackground" Color="#0E131B" />
         <SolidColorBrush x:Key="PanelBackground" Color="#19212D" />

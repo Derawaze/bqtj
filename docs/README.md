@@ -8,6 +8,8 @@
 | 构建目录、版本和人工验收门槛 | [构建规范](build-policy.md) |
 | 开发、验证、发布与清理命令 | [开发手册](development.md) |
 | 源码位置与技术选择 | [实现地图](architecture.md) |
+| 默认日常、首次选档、方案嵌套与组合 | [可组合脚本](script-composition.md) |
+| 直接修改WPF按钮、说明与动态提示 | [界面文案修改](ui-text-editing.md) |
 | Cookie 隔离与入口的验证依据 | [技术决策](decisions.md) |
 | 历史缺陷的有效结论与验证入口 | [回归要点](regressions.md) |
 | 窗口缩放与实际像素证据 | [显示诊断](diagnostics/viewport-loading.md) |

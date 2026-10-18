@@ -32,12 +32,14 @@ function Get-ZipEntryPeMachine {
     }
 }
 
-# 热更新包是扁平结构：三个入口程序加一份说明，全部覆盖到安装目录。
+# 热更新包是扁平结构：三个入口程序、说明与默认脚本资源；保留用户plans目录。
 $allowedFiles = @(
     'BqtjLauncher.Desktop.exe',
     'BqtjNativeFlashHost.exe',
     'BqtjAccountTool.exe',
-    'HOTFIX-README.md'
+    'HOTFIX-README.md',
+    'scripts/README.md',
+    'scripts/official-daily/script.json'
 )
 
 $archive = [System.IO.Compression.ZipFile]::OpenRead($resolvedArchivePath)
@@ -53,9 +55,8 @@ try {
         $normalizedPath = $entry.FullName.Replace('\', '/')
         if ($normalizedPath.StartsWith('/') -or
             $normalizedPath -match '(^|/)\.\.(/|$)' -or
-            $normalizedPath -match '^[A-Za-z]:' -or
-            $normalizedPath.Contains('/')) {
-            throw "热更新包必须是无子目录的扁平结构：$($entry.FullName)"
+            $normalizedPath -match '^[A-Za-z]:') {
+            throw "热更新包包含不安全路径：$($entry.FullName)"
         }
 
         $relativePaths += $normalizedPath

@@ -17,6 +17,9 @@ public partial class MainWindow : Window
     private readonly BqtjLauncher.Application.IAccountEditor _accountEditor;
     private bool _ready;
     private bool _refreshing;
+    private readonly ScriptWorkspace? _scripts;
+    private ScriptManagerWindow? _scriptWindow;
+    private Guid? _quickPlanId;
 
     /// <summary>只打开日志子目录，避免引导用户上传包含明文凭据的整个数据目录。</summary>
     private void OpenLogs_Click(object sender, RoutedEventArgs e)
@@ -62,25 +65,115 @@ public partial class MainWindow : Window
         }
     }
 
-    public MainWindow(MainWindowViewModel viewModel, BqtjLauncher.Application.IAccountEditor accountEditor)
+    public MainWindow(MainWindowViewModel viewModel, BqtjLauncher.Application.IAccountEditor accountEditor, ScriptWorkspace? scripts = null)
     {
         InitializeComponent();
         _viewModel = viewModel;
         _accountEditor = accountEditor;
+        _scripts = scripts;
         DataContext = viewModel;
-        Loaded += async (_, _) => { await _viewModel.InitializeAsync(); _ready = true; };
+        if (_scripts is not null)
+        {
+            _scripts.SelectSaveAsync = SelectSaveAsync;
+            _scripts.Changed += Scripts_Changed;
+            Scripts_Changed(this, EventArgs.Empty);
+        }
+        _viewModel.PropertyChanged += SelectedProfile_Changed;
+        Loaded += async (_, _) => { await _viewModel.InitializeAsync(); await RefreshScriptsAsync(); _ready = true; };
         Activated += MainWindow_Activated;
         // 首次显示后启动独立异步检查，不等待游戏入口解析，也不在账号容器中重复检查。
         ContentRendered += MainWindow_ContentRendered;
-        Closed += (_, _) => _viewModel.CheckForUpdatesCommand.Cancel();
+        Closed += (_, _) => { _viewModel.CheckForUpdatesCommand.Cancel(); _scriptWindow?.Dispose(); };
     }
 
+    /// <summary>非模态脚本窗口复用同一实例，不创建第二份账号会话管理或运行队列。</summary>
+    private void ManageScripts_Click(object sender, RoutedEventArgs args)
+    {
+        if (_scripts is null) return;
+        _scriptWindow ??= new ScriptManagerWindow(_scripts);
+        _scriptWindow.Show();
+        if (_scriptWindow.WindowState == WindowState.Minimized) _scriptWindow.WindowState = WindowState.Normal;
+        _scriptWindow.Activate();
+    }
+
+    private void SelectedProfile_Changed(object? sender, PropertyChangedEventArgs args)
+    {
+        if (args.PropertyName == nameof(MainWindowViewModel.SelectedProfile)) Scripts_Changed(this, EventArgs.Empty);
+    }
+
+    private BqtjLauncher.Application.ScriptPlan? SelectedDailyPlan => _scripts?.Plans.FirstOrDefault(
+        plan => plan.DefaultAccountId == _viewModel.SelectedProfile?.Id && plan.DefaultAccountId is not null && plan.ShowOnDashboard);
+
+    /// <summary>当前账号日常始终单独展示，多账号和其他方案收在次级区域。</summary>
+    private void Scripts_Changed(object? sender, EventArgs args)
+    {
+        if (_scripts is null) return;
+        var others = _scripts.QuickPlans.Where(plan => plan.DefaultAccountId is null).ToArray();
+        QuickScriptPlans.ItemsSource = others;
+        QuickScriptPlans.SelectedItem = others.FirstOrDefault(plan => plan.Id == _quickPlanId) ?? others.FirstOrDefault();
+        RunScriptButton.IsEnabled = !_scripts.IsBusy && QuickScriptPlans.SelectedItem is not null;
+        var daily = SelectedDailyPlan;
+        RunDailyButton.IsEnabled = daily is not null && !_scripts.IsBusy;
+        EditDailyButton.IsEnabled = daily is not null;
+        DailyScriptStatus.Text = daily is null ? "该账号暂无面板可用的日常；删除或隐藏后可在脚本管理中配置。"
+            : "按本方案运行；首次选择存档后会记住，“编辑日常”可修改。";
+        ScriptQueueStatus.Text = _scripts.Coordinator.IsRunning ? "正在运行：" + _scripts.Coordinator.RunningName + "。在脚本管理中查看进度。"
+            : _scripts.IsBusy ? _scripts.PreparationStage
+            : others.Length == 0 ? "其他方案可在脚本管理中设置“面板可见,是”。" : "";
+    }
+
+    private async Task RefreshScriptsAsync()
+    {
+        if (_scripts is null) return;
+        try { await _scripts.AccountsAsync(); Scripts_Changed(this, EventArgs.Empty); }
+        catch (Exception) { _viewModel.StatusText = "默认日常准备失败，请检查脚本目录或稍后重试。"; }
+    }
+
+    /// <summary>所有运行入口共用同一选档弹窗，选择前不创建游戏或读取真实存档。</summary>
+    private Task<int?> SelectSaveAsync(BqtjLauncher.Application.ScriptSaveSelection request)
+    {
+        var owner = System.Windows.Application.Current.Windows.OfType<Window>().FirstOrDefault(window => window.IsActive) ?? this;
+        var dialog = new SaveSlotSelectionWindow(request, _scripts!.SaveNames.GetValueOrDefault(request.Account.Id) ?? []) { Owner = owner };
+        return Task.FromResult(dialog.ShowDialog() == true ? dialog.SelectedSave : null);
+    }
+
+    private void QuickScriptSelection_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs args)
+    {
+        if (QuickScriptPlans.SelectedItem is BqtjLauncher.Application.ScriptPlan plan) _quickPlanId = plan.Id;
+        if (RunScriptButton is not null) RunScriptButton.IsEnabled = _scripts is not null && !_scripts.IsBusy && QuickScriptPlans.SelectedItem is not null;
+    }
+
+    private async void RunDaily_Click(object sender, RoutedEventArgs args)
+    {
+        if (SelectedDailyPlan is { } plan) await RunPlanAsync(plan);
+    }
+
+    private async void EditDaily_Click(object sender, RoutedEventArgs args)
+    {
+        if (SelectedDailyPlan is not { } plan) return;
+        ManageScripts_Click(sender, args);
+        if (_scriptWindow is not null) await _scriptWindow.OpenPlanAsync(plan.Id);
+    }
+
+    private async void RunScript_Click(object sender, RoutedEventArgs args)
+    {
+        if (QuickScriptPlans.SelectedItem is BqtjLauncher.Application.ScriptPlan plan) await RunPlanAsync(plan);
+    }
+
+    private async Task RunPlanAsync(BqtjLauncher.Application.ScriptPlan plan)
+    {
+        if (_scripts is null) return;
+        try { await _scripts.RunAsync(plan); }
+        catch (OperationCanceledException) { _viewModel.StatusText = "已取消选择存档，脚本未启动。"; }
+        catch (Exception error) { _viewModel.StatusText = error.Message; }
+        finally { Scripts_Changed(this, EventArgs.Empty); }
+    }
     /// <summary>从独立工具返回面板时更新账号列表，保留当前选中项，不重新查询游戏版本。</summary>
     private async void MainWindow_Activated(object? sender, EventArgs e)
     {
         if (!_ready || _refreshing || _viewModel.IsBusy) return;
         _refreshing = true;
-        try { await _viewModel.RefreshAsync(); }
+        try { await _viewModel.RefreshAsync(); await RefreshScriptsAsync(); }
         catch (Exception) { _viewModel.StatusText = "账号列表更新失败，请稍后重试。"; }
         finally { _refreshing = false; }
     }
@@ -112,7 +205,10 @@ public partial class MainWindow : Window
         var dialog = new AccountEditorWindow(_accountEditor, Guid.Empty, string.Empty) { Owner = this };
         var saved = dialog.ShowDialog() == true;
         if (saved || dialog.AccountToolOpened)
+        {
             await _viewModel.RefreshAsync(saved ? dialog.SavedAccountId : null);
+            await RefreshScriptsAsync();
+        }
     }
 
     /// <summary>固定打开时的账号 ID，避免列表刷新后编辑到另一账号。</summary>
@@ -122,7 +218,7 @@ public partial class MainWindow : Window
         if (selected is null || _viewModel.IsBusy) return;
         var dialog = new AccountEditorWindow(_accountEditor, selected.Id, selected.DisplayName) { Owner = this };
         var saved = dialog.ShowDialog() == true;
-        if (saved || dialog.AccountToolOpened) await _viewModel.RefreshAsync(selected.Id);
+        if (saved || dialog.AccountToolOpened) { await _viewModel.RefreshAsync(selected.Id); await RefreshScriptsAsync(); }
     }
 
     /// <summary>直接打开或激活同一个账号管理工具，独立进程不依附面板生命周期。</summary>

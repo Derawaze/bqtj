@@ -1,0 +1,174 @@
+<Window x:Class="BqtjLauncher.Desktop.ScriptManagerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="脚本管理" Width="1320" Height="830" MinWidth="1120" MinHeight="620"
+        WindowStyle="SingleBorderWindow" ResizeMode="CanResize" ShowInTaskbar="True"
+        WindowStartupLocation="CenterScreen" Background="{StaticResource WindowBackground}"
+        Foreground="{StaticResource TextBrush}" Icon="Assets/launcher.ico" AllowDrop="True" Drop="Files_Drop">
+    <Window.Resources>
+        <!-- 全部操作采用相同高度，主要动作仅以主题色强调。 -->
+        <Style TargetType="Button" BasedOn="{StaticResource BaseButtonStyle}">
+            <Setter Property="Width" Value="100"/><Setter Property="Height" Value="36"/>
+            <Setter Property="Padding" Value="8,4"/><Setter Property="Margin" Value="0"/>
+            <Setter Property="FontSize" Value="13"/>
+        </Style>
+        <Style x:Key="EditorPrimary" TargetType="Button" BasedOn="{StaticResource PrimaryButtonStyle}">
+            <Setter Property="Width" Value="100"/><Setter Property="Height" Value="36"/>
+            <Setter Property="Padding" Value="8,4"/><Setter Property="Margin" Value="0"/>
+        </Style>
+        <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+            <Setter Property="CaretBrush" Value="White"/>
+        </Style>
+        <Style TargetType="ListBox">
+            <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        </Style>
+        <Style TargetType="ListBoxItem">
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Padding" Value="6,5"/>
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem">
+                <Border x:Name="Selection" Background="Transparent" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                    <ContentPresenter HorizontalAlignment="Stretch"/>
+                </Border>
+                <ControlTemplate.Triggers>
+                    <Trigger Property="IsSelected" Value="True"><Setter TargetName="Selection" Property="Background" Value="#23436A"/></Trigger>
+                    <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Selection" Property="Background" Value="#293B54"/></Trigger>
+                </ControlTemplate.Triggers>
+            </ControlTemplate></Setter.Value></Setter>
+        </Style>
+        <Style x:Key="SectionTitle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="16"/><Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,0,0,10"/>
+        </Style>
+    </Window.Resources>
+    <Grid Margin="20">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <DockPanel Margin="0,0,0,14">
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                <Button x:Name="OpenScriptsButton" Content="打开脚本文件夹" Click="OpenFolder_Click" Width="160"/><Button Content="刷新" Click="Refresh_Click" Margin="8,0,0,0"/>
+            </StackPanel>
+            <TextBlock Text="脚本管理" FontSize="25" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,24,0"/>
+
+        </DockPanel>
+        <Border Grid.Row="1" Background="#141B27" BorderBrush="#35455C" BorderThickness="1" CornerRadius="7" Padding="12,8" Margin="0,0,0,12">
+            <StackPanel>
+                <TextBlock Text="自动运行游戏内置「日常操作复制」；游戏窗口可以被遮挡，但不能最小化。具体语句说明见内置模板注释。" Foreground="{StaticResource MutedTextBrush}" FontSize="12" Margin="0,4,0,0" TextWrapping="Wrap"/>
+            </StackPanel>
+        </Border>
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="230"/><ColumnDefinition Width="12"/><ColumnDefinition/><ColumnDefinition Width="12"/><ColumnDefinition Width="300"/></Grid.ColumnDefinitions>
+            <Border Background="{StaticResource PanelBackground}" CornerRadius="9" Padding="10">
+                <Grid>
+                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                    <TextBlock Text="脚本方案" Style="{StaticResource SectionTitle}"/>
+                    <Grid Grid.Row="1" Margin="0,0,0,10">
+                        <TextBox x:Name="SearchPlans" ToolTip="按方案名称搜索，内置模板也保存在此处" TextChanged="SearchPlans_Changed" Padding="10,7,30,7"/>
+                        <Path Data="M 11,11 L 16,16 M 12,7 A 5,5 0 1 1 2,7 A 5,5 0 1 1 12,7" Stroke="#9DAABD" StrokeThickness="1.7" Width="18" Height="18" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,8,0" IsHitTestVisible="False"/>
+                    </Grid>
+                    <ListBox x:Name="PlansList" Grid.Row="2" SelectionChanged="Plan_Changed" MouseDoubleClick="Plan_DoubleClick" Background="#141B27" Foreground="#E8EDF5" BorderBrush="#35455C">
+                        <ListBox.ItemTemplate><DataTemplate>
+                            <TextBlock Text="{Binding ListDisplayName}" TextWrapping="Wrap" ToolTip="双击编辑方案"/>
+                        </DataTemplate></ListBox.ItemTemplate>
+                    </ListBox>
+                    <UniformGrid Grid.Row="3" Rows="2" Columns="2" Margin="0,10,0,0">
+                        <Button Content="新建方案" Click="NewPlan_Click" Margin="0,0,4,6"/><Button Content="复制方案" Click="Copy_Click" Margin="4,0,0,6"/>
+                        <Button Content="删除方案" Click="DeletePlan_Click" Margin="0,0,4,0"/>
+                    </UniformGrid>
+                </Grid>
+            </Border>
+            <Border Grid.Column="2" Background="{StaticResource PanelBackground}" CornerRadius="9" Padding="14">
+                <Grid>
+                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="75"/><ColumnDefinition Width="95"/></Grid.ColumnDefinitions>
+                        <StackPanel Margin="0,0,10,0"><TextBlock Text="方案名称"/><TextBox x:Name="PlanName" TextChanged="Metadata_Changed" Margin="0,5,0,0"/></StackPanel>
+                        <StackPanel Grid.Column="1" Margin="0,0,10,0"><TextBlock Text="默认倍率"/><TextBox x:Name="Speed" TextChanged="Metadata_Changed" Text="2" Margin="0,5,0,0"/></StackPanel>
+                        <StackPanel Grid.Column="2"><TextBlock Text="并发数 · 0不限"/><TextBox x:Name="Concurrency" TextChanged="Metadata_Changed" Text="0" Margin="0,5,0,0"/></StackPanel>
+                    </Grid>
+                    <TextBlock x:Name="EditorState" Grid.Row="1" TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource MutedTextBrush}" Margin="0,10,0,8"/>
+                    <!-- 行号和语句分开绘制；命令栏与运行监控互斥，不把可编辑内容当作运行队列。 -->
+                    <Border Grid.Row="2" BorderBrush="#35455C" BorderThickness="1" Background="#101722" CornerRadius="5">
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="40"/><ColumnDefinition/></Grid.ColumnDefinitions>
+                            <Canvas ClipToBounds="True"><TextBlock x:Name="LineNumbers" FontFamily="Consolas" FontSize="14" LineHeight="22" Foreground="#64748B" TextAlignment="Right" Width="32" Padding="0"/></Canvas>
+                            <RichTextBox x:Name="SourceEditor" Grid.Column="1" Background="Transparent" Foreground="#E8EDF5" BorderThickness="0"
+                                FontFamily="Consolas,Microsoft YaHei UI" FontSize="14" AcceptsTab="True" CaretBrush="White" MouseDoubleClick="Editor_DoubleClick"
+                                VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                                TextChanged="Source_Changed" ScrollViewer.ScrollChanged="Editor_ScrollChanged"/>
+                        </Grid>
+                    </Border>
+                    <TextBlock x:Name="ValidationText" Grid.Row="3" Foreground="#D6AA55" TextWrapping="Wrap" FontSize="12" MaxHeight="65" Margin="0,8,0,0"/>
+                    <StackPanel Grid.Row="4" Margin="0,10,0,0">
+                        <TextBlock Text="方案设置和日常操作说明见内置模板注释。" Foreground="#C1CDDD" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                        <CheckBox x:Name="SyncReferences" Content="改名时同步更新所有已有引用" IsChecked="True" Foreground="#C1CDDD" FontSize="12" Margin="0,0,0,10"/>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button x:Name="EditButton" Content="编辑方案" Click="Edit_Click" Margin="0,0,8,0"/>
+                            <Button x:Name="ValidateButton" Content="校验语句" Click="Validate_Click"/>
+                            <Button x:Name="SaveButton" Content="保存方案" Click="SavePlan_Click" Margin="8,0,0,0"/>
+                            <Button x:Name="StartButton" Content="运行方案" Click="RunPlan_Click" Style="{StaticResource EditorPrimary}" Margin="8,0,0,0"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Grid>
+            </Border>
+            <Border Grid.Column="4" Background="{StaticResource PanelBackground}" CornerRadius="9" Padding="14">
+                <Grid>
+                    <ScrollViewer x:Name="CommandsPanel" Margin="0,0,0,48" VerticalScrollBarVisibility="Auto">
+                        <StackPanel>
+                            <TextBlock Text="可插入命令" Style="{StaticResource SectionTitle}"/>
+                            <ListBox x:Name="CommandsList" Height="175" SelectionChanged="Command_Changed" MouseDoubleClick="Command_DoubleClick" Background="#141B27" Foreground="#E8EDF5" BorderBrush="#35455C"/>
+                            <TextBlock x:Name="CommandHelp" TextWrapping="Wrap" Foreground="{StaticResource MutedTextBrush}" FontSize="12" Margin="0,8,0,12"/>
+                            <StackPanel x:Name="AccountParameters">
+                            <TextBlock Text="账号 / 绑定别名" Margin="0,0,0,5"/>
+                            <ComboBox x:Name="Accounts" SelectionChanged="Account_Changed" Margin="0,0,0,6"/>
+                            <TextBox x:Name="AccountAlias" ToolTip="可以使用账号别名，实际绑定稳定ID" Margin="0,0,0,8"/>
+                            </StackPanel>
+                            <StackPanel x:Name="SaveParameters">
+                            <TextBlock Text="存档 · 名称可校正" Margin="0,0,0,5"/>
+                            <ComboBox x:Name="SaveSlots" DisplayMemberPath="Label" SelectionChanged="Save_Changed" Margin="0,0,0,6"/>
+                            <TextBox x:Name="SaveName" ToolTip="仅修改角色显示名称，不改变存档号" Margin="0,0,0,6"/>
+                            <Button Content="校正名称" Click="CorrectName_Click" HorizontalAlignment="Left" Margin="0,0,0,12"/>
+                            </StackPanel>
+                            <StackPanel x:Name="CallParameters">
+                            <TextBlock Text="已保存子方案" Margin="0,0,0,5"/>
+                            <ComboBox x:Name="SubPlans" DisplayMemberPath="Name" Margin="0,0,0,10"/>
+                            </StackPanel>
+
+                            <Expander Header="全局常量 / 方案覆盖" IsExpanded="False" Foreground="#E8EDF5">
+                                <StackPanel>
+                                    <TextBlock Text="全局值供所有方案使用；本方案同名值优先。每行 名称=值，语句用 $名称；已开始的运行保持原值。" TextWrapping="Wrap" Foreground="{StaticResource MutedTextBrush}" FontSize="12" Margin="0,8"/>
+                                    <TextBlock Text="全局默认值（单独保存）" Margin="0,0,0,5"/>
+                                    <TextBox x:Name="GlobalConstantsText" AcceptsReturn="True" MinHeight="80" VerticalScrollBarVisibility="Auto" TextWrapping="NoWrap"/>
+                                    <Button Content="保存全局常量" Click="SaveGlobals_Click" HorizontalAlignment="Left" Margin="0,6,0,12"/>
+                                    <TextBlock Text="本方案覆盖（随方案保存，可留空）" Margin="0,0,0,5"/>
+                                    <TextBox x:Name="ConstantsText" TextChanged="Metadata_Changed" AcceptsReturn="True" MinHeight="80" VerticalScrollBarVisibility="Auto" TextWrapping="NoWrap"/>
+                                </StackPanel>
+                            </Expander>
+                        </StackPanel>
+                    </ScrollViewer>
+                    <!-- 编辑模式只显示插入；运行监控模式在同一位置显示停止。 -->
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Bottom">
+                        <Button x:Name="InsertButton" Content="插入语句" Click="Insert_Click" Style="{StaticResource EditorPrimary}"/>
+                        <Button x:Name="StopButton" Content="停止本次运行" Click="Stop_Click"/>
+                    </StackPanel>
+                    <Grid x:Name="MonitorPanel" Visibility="Collapsed" Margin="0,0,0,48">
+                        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                        <TextBlock Text="本次运行监控" Style="{StaticResource SectionTitle}"/>
+                        <TextBlock x:Name="RunIdentity" Grid.Row="1" Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap" FontSize="12" Margin="0,0,0,12"/>
+                        <ListBox x:Name="ProgressList" Grid.Row="2" Background="#141B27" Foreground="#E8EDF5" BorderBrush="#35455C">
+                            <ListBox.ItemTemplate><DataTemplate><Border BorderBrush="#2A374A" BorderThickness="0,0,0,1" Padding="5,7">
+                                <StackPanel>
+                                    <TextBlock Text="{Binding Label}" TextWrapping="Wrap"/>
+                                    <TextBlock Text="{Binding StateDisplay}" Foreground="#84B4FF" FontSize="12" Margin="0,4,0,2"/>
+                                    <TextBlock Text="{Binding Stage}" TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource MutedTextBrush}"/>
+                                </StackPanel>
+                            </Border></DataTemplate></ListBox.ItemTemplate>
+                        </ListBox>
+                        <TextBlock Grid.Row="3" Text="此栏只显示本次快照。停止外部操作后，游戏内置脚本可能仍在运行。" TextWrapping="Wrap" Foreground="{StaticResource MutedTextBrush}" FontSize="12" Margin="0,12,0,10"/>
+
+                    </Grid>
+                </Grid>
+            </Border>
+        </Grid>
+        <TextBlock x:Name="Status" Grid.Row="3" TextWrapping="Wrap" Foreground="{StaticResource MutedTextBrush}" Margin="0,12,0,0"/>
+    </Grid>
+</Window>

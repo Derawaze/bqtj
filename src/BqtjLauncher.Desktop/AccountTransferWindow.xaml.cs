@@ -186,6 +186,18 @@ public partial class AccountTransferWindow : Window
         _updatingSelection = false;
     }
 
+    /// <summary>仅切换密码列的显示；隐藏时取消尚未提交的单元格编辑，不修改已保存凭据。</summary>
+    private void ShowPasswords_Changed(object sender, RoutedEventArgs e)
+    {
+        if (PasswordColumn is null) return;
+        if (ShowPasswordsInput.IsChecked != true)
+        {
+            Accounts.CancelEdit(DataGridEditingUnit.Cell);
+            Accounts.CancelEdit(DataGridEditingUnit.Row);
+            _editing = false;
+        }
+        PasswordColumn.Visibility = ShowPasswordsInput.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+    }
     private void SelectAll_Changed(object sender, RoutedEventArgs e)
     {
         if (_updatingSelection) return;

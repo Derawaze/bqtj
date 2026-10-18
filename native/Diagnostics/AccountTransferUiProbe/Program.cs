@@ -160,6 +160,10 @@ internal static class Program
         Require((await repository.GetAsync(id))!.DisplayName == "原位名称", "双击名称保存");
         await EditCellAsync(grid, FindRow(), 2, "fake-edited", rightClick: true);
         Require((await repository.ReadCredentialAsync(id))!.Username == "fake-edited", "右键账号保存");
+        var showPasswords = (CheckBox)tool.FindName("ShowPasswordsInput");
+        Require(grid.Columns[3].Visibility == Visibility.Collapsed, "密码列默认隐藏");
+        showPasswords.IsChecked = true;
+        Require(grid.Columns[3].Visibility == Visibility.Visible, "显示密码开关展开密码列");
         await EditCellAsync(grid, FindRow(), 3, "edited-password", rightClick: false);
         Require((await repository.ReadCredentialAsync(id))!.Password == "edited-password", "明文密码保存");
         var edit = await BeginEditAsync(grid, FindRow(), 3, false);
@@ -167,6 +171,9 @@ internal static class Program
         grid.CancelEdit(DataGridEditingUnit.Cell);
         grid.CancelEdit(DataGridEditingUnit.Row);
         Require((await repository.ReadCredentialAsync(id))!.Password == "edited-password", "取消编辑保留密码");
+        showPasswords.IsChecked = false;
+        Require(grid.Columns[3].Visibility == Visibility.Collapsed, "隐藏密码列不改变凭据");
+        showPasswords.IsChecked = true;
         await EditCellAsync(grid, FindRow(), 2, "fake-first", rightClick: true);
         Require((await repository.ReadCredentialAsync(id))!.Username == "fake-edited", "重复账号不保存");
         Require(((TextBlock)tool.FindName("Feedback")).Text.Contains("已存在"), "重复错误可见");
@@ -237,7 +244,7 @@ internal static class Program
         var panel = XDocument.Load(Path.Combine(root, "src/BqtjLauncher.Desktop/MainWindow.xaml"));
         XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
         panel.Root!.Attribute(x + "Class")!.Remove();
-        foreach (var attribute in panel.Descendants().Attributes().Where(attribute => attribute.Name.LocalName is "Click" or "RequestNavigate").ToArray()) attribute.Remove();
+        foreach (var attribute in panel.Descendants().Attributes().Where(attribute => attribute.Name.LocalName is "Click" or "RequestNavigate" or "SelectionChanged").ToArray()) attribute.Remove();
         panel.Root.SetAttributeValue("Icon", "/BqtjLauncher.Desktop;component/Assets/launcher.ico");
         foreach (var image in panel.Descendants().Where(element => element.Name.LocalName == "Image")) image.SetAttributeValue("Source", "/BqtjLauncher.Desktop;component/Assets/launcher.png");
         foreach (var list in panel.Descendants().Where(element => element.Name.LocalName == "ListBox")) list.SetAttributeValue("SelectedItem", "{Binding SelectedProfile, Mode=OneWay}");

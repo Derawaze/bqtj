@@ -81,7 +81,9 @@ try {
         'BqtjNativeFlashHost.exe',
         'BqtjAccountTool.exe',
         'README.md',
-        'THIRD_PARTY_NOTICES.md'
+        'THIRD_PARTY_NOTICES.md',
+        'scripts/README.md',
+        'scripts/official-daily/script.json'
     )
     if (Test-Path -LiteralPath (Join-Path $repositoryRoot 'LICENSE') -PathType Leaf) {
         $requiredFiles += 'LICENSE'
@@ -93,7 +95,7 @@ try {
         }
     }
 
-    # 自包含运行库及 SQLite 已嵌入主程序，包只允许三个入口和说明文件。
+    # 自包含运行库及 SQLite 已嵌入主程序，包只允许三个入口、说明与默认脚本资源，不包含用户方案。
     foreach ($relativePath in $relativePaths) {
         if ($relativePath -notin $requiredFiles) { throw "精简发布包包含额外文件：$relativePath" }
     }
@@ -132,7 +134,7 @@ try {
             throw "发布包包含诊断或测试项目文件：$relativePath"
         }
 
-        if ($relativePath.Contains('/')) {
+        if ($relativePath.Contains('/') -and $relativePath -notin @('scripts/README.md','scripts/official-daily/script.json')) {
             $segments = $relativePath -split '/'
             if ($segments[0] -ine 'zh-Hans' -or $relativePath -notmatch '(?i)\.resources\.dll$') {
                 throw "发布包包含非必要子目录或卫星资源：$relativePath"

@@ -48,7 +48,7 @@ jobs:
         with:
           msystem: MINGW32
           update: true
-          install: mingw-w64-i686-gcc
+          install: mingw-w64-i686-gcc mingw-w64-x86_64-gcc
 
       - name: Restore
         run: dotnet restore BqtjLauncher.sln
@@ -80,6 +80,10 @@ jobs:
           BQTJ_MINGW32_GCC: ${{ steps.msys2.outputs.msys2-location }}\mingw32\bin\gcc.exe
         run: ./tools/Test-AccountManager.ps1 -CompilerPath $env:BQTJ_MINGW32_GCC
 
+      - name: Verify script manager UI and shared vision
+        env:
+          BQTJ_MINGW64_GXX: ${{ steps.msys2.outputs.msys2-location }}\mingw64\bin\g++.exe
+        run: ./tools/Test-ScriptManagement.ps1 -Compiler64Path $env:BQTJ_MINGW64_GXX -AllowNonInteractive
       - name: Build self-contained Windows package
         env:
           BQTJ_MINGW32_GCC: ${{ steps.msys2.outputs.msys2-location }}\mingw32\bin\gcc.exe

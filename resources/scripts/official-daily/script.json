@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "id": "official-daily",
+  "name": "官方日常操作复制",
+  "entry": "daily",
+  "flow": [
+    {
+      "id": "daily",
+      "type": "officialDaily"
+    }
+  ]
+}

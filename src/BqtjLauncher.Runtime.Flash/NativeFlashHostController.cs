@@ -35,6 +35,10 @@ internal sealed class NativeFlashHostController : IDisposable
 
     public SpeedMultiplier Current { get; private set; } = SpeedMultiplier.Original;
 
+    /// <summary>仅向自身容器的自动化端提供已绑定宿主 PID，不按桌面窗口猜测目标。</summary>
+    internal int AutomationProcessId => _process is { HasExited: false } ? _process.Id
+        : throw new InvalidOperationException("原生游戏宿主尚未就绪。");
+
     /// <summary>
     /// 宿主输出行观察口：由后台命令读取任务逐行回调，不用于直接更新 UI，
     /// 用于确认宿主回执是否真的从管道到达（用户现场没有调试器，只能靠日志）。

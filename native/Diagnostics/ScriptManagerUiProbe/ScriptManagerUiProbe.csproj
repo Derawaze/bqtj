@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>BqtjLauncher.Desktop</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../src/BqtjLauncher.Infrastructure/BqtjLauncher.Infrastructure.csproj"/>
+    <ProjectReference Include="../../../src/BqtjLauncher.Runtime.Flash/BqtjLauncher.Runtime.Flash.csproj"/>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2"/>
+    <!-- 真实窗口链接到独立夹具；不调用生产App，不读取用户库。 -->
+    <Page Include="../../../src/BqtjLauncher.Desktop/ScriptManagerWindow.xaml" Link="ScriptManagerWindow.xaml"/>
+    <Compile Include="../../../src/BqtjLauncher.Desktop/ScriptManagerWindow.xaml.cs" Link="ScriptManagerWindow.xaml.cs"/>
+    <Compile Include="../../../src/BqtjLauncher.Desktop/ScriptWorkspace.cs" Link="ScriptWorkspace.cs"/>
+    <Page Include="../../../src/BqtjLauncher.Desktop/SaveSlotSelectionWindow.xaml" Link="SaveSlotSelectionWindow.xaml"/>
+    <Compile Include="../../../src/BqtjLauncher.Desktop/SaveSlotSelectionWindow.xaml.cs" Link="SaveSlotSelectionWindow.xaml.cs"/>
+    <Resource Include="../../../src/BqtjLauncher.Desktop/Assets/launcher.ico" Link="Assets/launcher.ico"/>
+    <Resource Include="../../../src/BqtjLauncher.Desktop/Assets/launcher.png" Link="Assets/launcher.png"/>
+  </ItemGroup>
+</Project>

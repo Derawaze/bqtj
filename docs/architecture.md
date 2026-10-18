@@ -9,6 +9,11 @@
 
 | 修改目标 | 先读 |
 |---|---|
+| 脚本窗口与快捷方案 | Desktop/ScriptManagerWindow、ScriptWorkspace、MainWindow |
+| 每账号默认日常、首次选档与模板升级 | Application/AccountDailyPlans、BuiltInScriptPlans、ScriptProgram；Desktop/SaveSlotSelectionWindow；Infrastructure/ScriptFileStore |
+| 脚本定义/配置、中文解析与账号队列 | Application/ScriptModels、ScriptProgram、ScriptProgramRunner、ScriptCoordinator；Infrastructure/ScriptFileStore |
+| 存档名区域/等级后缀与校正同步 | Runtime.Flash/SaveSlotNameReader、SharedScriptVision；Desktop/ScriptManagerWindow；Application/ScriptPlanTask |
+| 会话定向控制及共享视觉 | Runtime.Flash/AutomationSessionPipe、OfficialScriptExecutor、SharedScriptVision；native/ScriptVision |
 | 面板/账号编辑/组合根 | src/BqtjLauncher.Desktop/ |
 | 账号与会话规则 | src/BqtjLauncher.Domain/、src/BqtjLauncher.Application/LauncherModule.cs |
 | 明文凭据与事务 | src/BqtjLauncher.Application/IAccountEditor.cs、src/BqtjLauncher.Infrastructure/SqliteAccountEditor.cs |
@@ -61,3 +66,13 @@ AppContainer 兼容性类未接入生产链；已否决方案的独立启动程�
 - Cookie仅隔离运行期；AppContainer实机音频E_ACCESSDENIED且IE/WinINet导航失败，不能因合成测试通过恢复该方案。持久隔离和新增系统用户等边界见CONTEXT。
 - 游戏入口从官方页解析；sda主机曾对无Referer请求返回错误页，按同路径映射可直连主机。不能把某次游戏版本写成永久入口。
 - 发布采用压缩自包含程序，不手工裁剪运行库，不启用WPF不兼容裁剪。恢复卡住游戏通过重启该账号，不能由此推断卡顿根因已解决。
+## 可选脚本链
+
+脚本窗口与主面板共用LauncherModule，按账号ID签发新会话，等待既有窗口释放。容器通过当前用户命名管道提供自身Flash子窗口、临时倍率及尺寸解锁；脚本创建时固定950×600物理像素，禁用尺寸菜单、最大化和拖拽缩放，跨DPI重新校准。成功、停止、失败的保留窗口统一解锁，不覆盖共享窗口偏好；不按桌面标题或名称猜测句柄，不持久写速度偏好。脚本窗口关闭只隐藏，队列由工作区管理。
+
+单个x64原生视觉进程动态加载MaaFramework与CPU中文OCR，通过编号协议串行处理识别请求；每账号窗口保留独立截图缓存，同帧快照不可跨目标使用。只发送该Flash子窗口的后台消息，不移动系统光标。官方保存由内置脚本完成；本次进度增长、N/N标题及其左侧绿色独立勾形持续确认至少3秒后，才退出存档或精确关闭原会话。失败或取消保留窗口并恢复临时倍率。列表末行可能超出侧栏视口，完成判断只绑定整体标题，不要求末行可见。脚本管理窗口按所在显示器DPI转换工作区，确保标题栏与关闭按钮可见。
+
+中文“读取存档名称”语句临时设2倍速，完成保留供根运行后续语句复用；旧临时扫描接口仍在成功后关闭自有窗口，失败/取消恢复原倍率。名称区域为卡片中心相对(-76,-17)的168×20像素行，黄色遮罩排除右上灰色通关标记和下方时间；同帧生成白底、黑底3倍图，按字符数加权OCR置信度选择，黑底提升至少0.02才替换默认白底结果。保留数字名称，只规范行尾lv等级。低置信度项提示校正。校正或重新读取按账号ID＋存档号更新编辑队列并通知绑定，不改变运行快照。该指令依赖组件protocolVersion=2，开始识别前校验，旧组件提示配套更新。
+
+脚本定义与用户方案在程序目录scripts/，外部组件在components/automation/；两者不进入账号数据库。用户方案不含凭据，发布仅携带resources下的默认脚本，不复制运行目录中的用户配置。
+v2中文编辑器以ScriptProgram编译显式顺序/并行及子方案调用树，校验重名绑定、调用环和并行账号交集。LauncherModule按稳定账号ID原子取得已有或新建会话控制权，普通容器也开放绑定面板PID的控制管道；控制权释放后保留同一会话已知档号。根运行持有会话，子方案之间复用，结束统一释放倍率、尺寸锁和视觉；v1仍走原语义。方案改名可选按ID同步调用文字，旧别名兼容；账号和常量绑定不进入凭据。保存后右栏切换监控，不把草稿当运行队列。方案文档允许无效语句草稿及constantsSource原文，执行编译才强制校验。内置模板通过EnsureBuiltInPlans在plans首次生成并保留标记，后续不覆盖编辑/删除；与用户方案同列表。源码头部方案设置同步isSubPlan/showOnDashboard，调用权限与QuickPlans可见性分开；旧方案默认可调用。全局常量在scripts/config/constants.txt，本方案同名覆盖，编译冻结后不影响本轮运行。QuickPlans只投影面板可见的方案，主面板另将DefaultAccountId绑定的日常放到当前账号入口，其他方案折叠；调用选择器只列出子方案。运行前先编译完整树，收集“待选择存档”，先复用/启动窗口自动读取名称，再弹两列四行选择，全部确认才回写源码；取消保留名称和窗口。名称资料在scripts/catalog，下次编译带入显示名称。本轮细节见[脚本设计](script-composition.md)。

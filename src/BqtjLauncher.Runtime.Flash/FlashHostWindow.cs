@@ -28,6 +28,10 @@ namespace BqtjLauncher.Runtime.Flash;
 /// <summary>承载单账号游戏、工具栏与加载层；窗口档位只改变客户区，游戏缩放交给原生宿主。</summary>
 public sealed class FlashHostWindow : Window, IDisposable
 {
+    private AutomationSessionServer? _automationServer;
+    private readonly bool _backgroundAutomation;
+    private bool _automationWindowLocked;
+    private readonly Guid _accountId;
     internal const int NativeGameWidth = 950;
     internal const int NativeGameHeight = 600;
     private readonly NativeFlashHostController _flashHost;
@@ -50,6 +54,7 @@ public sealed class FlashHostWindow : Window, IDisposable
     private readonly Dictionary<decimal, WpfMenuItem> _speedItems = [];
     private readonly Dictionary<decimal, WpfMenuItem> _scaleItems = [];
     private WpfButton? _speedButton;
+    private WpfButton? _scaleButton;
     private WpfButton? _muteButton;
     private WpfButton? _reloadButton;
     private WindowsFormsHost? _gameHost;
@@ -72,11 +77,16 @@ public sealed class FlashHostWindow : Window, IDisposable
         int panelProcessId,
         bool layoutProbeEnabled = false,
         bool isolationCompatibilityAudioDisabled = false,
-        BqtjLauncher.Application.AccountCredential? credential = null)
+        BqtjLauncher.Application.AccountCredential? credential = null,
+        Guid? automationSessionId = null,
+        Guid? controlSessionId = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(accountName);
         ArgumentOutOfRangeException.ThrowIfLessThan(panelProcessId, 1);
         options.Validate();
+        _accountId = accountId;
+        _backgroundAutomation = automationSessionId.HasValue;
+        _automationWindowLocked = _backgroundAutomation;
         _credential = credential;
         _flashHost = new NativeFlashHostController(
             options.GamePageUri,
@@ -89,6 +99,9 @@ public sealed class FlashHostWindow : Window, IDisposable
         _reportDiagnostic?.Invoke(
             $"容器就绪：账号={accountId:D} 已保存的上一档={_speedHistory.Previous?.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "无"}");
         _runtimePreferences = _runtimePreferenceStore.Load();
+        // 自动化只调整本次窗口，不覆盖用户共享的窗口档位和静音偏好。
+        if (_backgroundAutomation)
+            _runtimePreferences = _runtimePreferences with { WindowMode = GameWindowMode.Original };
         _panelProcessId = panelProcessId;
         _baseTitle = $"爆枪突击 - {accountName}";
         _layoutProbeEnabled = layoutProbeEnabled;
@@ -104,7 +117,8 @@ public sealed class FlashHostWindow : Window, IDisposable
             dpi.DpiScaleX,
             dpi.DpiScaleY);
         _windowScale = startupLayout.RequestedScale;
-        _startupAppliedScale = startupLayout.AppliedScale;
+        // 脚本坐标使用真实950×600像素，不沿用屏幕自适应缩小档位。
+        _startupAppliedScale = _automationWindowLocked ? 1m : startupLayout.AppliedScale;
         _isFullScreen = startupLayout.IsFullScreen;
         Width = startupLayout.Width;
         Height = startupLayout.Height;
@@ -112,6 +126,7 @@ public sealed class FlashHostWindow : Window, IDisposable
         MinHeight = 400;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         Background = WpfBrushes.Black;
+        ResizeMode = _automationWindowLocked ? ResizeMode.CanMinimize : ResizeMode.CanResize;
         if (_isFullScreen)
         {
             // 在 Show() 前进入最大化无边框状态，避免先绘制普通窗口再切换全屏。
@@ -126,11 +141,44 @@ public sealed class FlashHostWindow : Window, IDisposable
             UpdateLayoutProbeTitle();
         };
         PreviewKeyDown += OnPreviewKeyDown;
+        DpiChanged += OnAutomationDpiChanged;
         // 窗口级热键在 OnSourceInitialized 注册；宿主输出行只用于现场日志。
         _flashHost.LineObserver = line =>
             _reportDiagnostic?.Invoke($"宿主输出：{line}");
 
         Content = BuildLayout();
+        if ((controlSessionId ?? automationSessionId) is { } sessionId) EnableAutomation(sessionId);
+    }
+
+    /// <summary>容器仅开放自身会话的目标及临时倍率；宿主访问回到容器调度器执行。</summary>
+    private void EnableAutomation(Guid sessionId)
+    {
+        _automationServer = new AutomationSessionServer(sessionId, _panelProcessId, async (request, token) =>
+            await Dispatcher.InvokeAsync(async () =>
+            {
+                token.ThrowIfCancellationRequested();
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                if (request.Command == "target")
+                    return new AutomationSessionPipe.Response(sessionId,
+                        AutomationTargetScanner.Read(sessionId, _accountId, _flashHost.AutomationProcessId, _surface.Handle));
+                if (request.Command == "speed" && request.Speed.HasValue)
+                {
+                    var previous = await _flashHost.ApplySpeedAsync(SpeedMultiplier.Create(request.Speed.Value), token);
+                    UpdateSpeedChecks();
+                    return new AutomationSessionPipe.Response(sessionId, PreviousSpeed: previous.Value);
+                }
+                if (request.Command == "unlock-window")
+                {
+                    await ReleaseAutomationWindowLockAsync();
+                    return new AutomationSessionPipe.Response(sessionId);
+                }
+                if (request.Command == "lock-window")
+                {
+                    await AcquireAutomationWindowLockAsync();
+                    return new AutomationSessionPipe.Response(sessionId);
+                }
+                throw new InvalidOperationException("未知的自动化请求。");
+            }, DispatcherPriority.Normal, token).Task.Unwrap().ConfigureAwait(false));
     }
 
     /// <summary>先校准真实客户区，显示加载提示，页面就绪后才显示原生游戏表面。</summary>
@@ -180,8 +228,8 @@ public sealed class FlashHostWindow : Window, IDisposable
 
         // 加载阶段隐藏整个 HwndHost，而非用 WPF 遮罩盖住会穿透的 ActiveX 子窗口。
         Opacity = 1;
-        ShowActivated = true;
-        Activate();
+        ShowActivated = !_backgroundAutomation;
+        if (!_backgroundAutomation) Activate();
         try
         {
             await StabilizeAndShowAsync(_lifetime.Token);
@@ -274,6 +322,7 @@ public sealed class FlashHostWindow : Window, IDisposable
 
         _disposed = true;
         _lifetime.Cancel();
+        _automationServer?.Dispose();
         _flashHost.Dispose();
         // 热键是系统级资源，窗口关闭时必须释放，否则同一账号再次启动容器会注册失败。
         var handle = new WindowInteropHelper(this).Handle;
@@ -348,8 +397,10 @@ public sealed class FlashHostWindow : Window, IDisposable
             speedMenu.IsOpen = true;
         };
 
-        var scale = CreateButton("窗口");
-        scale.ToolTip = "按游戏原生 950×600 等比调整画面和窗口";
+        var scale = _scaleButton = CreateButton("窗口");
+        scale.IsEnabled = !_automationWindowLocked;
+        ToolTipService.SetShowOnDisabled(scale, true);
+        scale.ToolTip = _automationWindowLocked ? "脚本运行中固定100%画面；结束或停止后可调整" : "按游戏原生 950×600 等比调整画面和窗口";
         var scaleMenu = CreateScaleMenu();
         scale.Click += (_, _) =>
         {
@@ -652,6 +703,59 @@ public sealed class FlashHostWindow : Window, IDisposable
         await TryApplySpeedAsync(previous);
     }
 
+    /// <summary>跨显示器DPI变化后重新校准脚本画面的物理像素；锁定期间不能要求用户再点100%。</summary>
+    private async void OnAutomationDpiChanged(object sender, System.Windows.DpiChangedEventArgs args)
+    {
+        if (!_automationWindowLocked) return;
+        await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Loaded);
+        if (_disposed || !_automationWindowLocked) return;
+        await FitWindowToGameScaleAsync(1m);
+        SynchronizeViewport();
+    }
+    /// <summary>接管已有窗口时校准为100%，不写偏好、不激活；最小化保留暂停状态。</summary>
+    private async Task AcquireAutomationWindowLockAsync()
+    {
+        if (_automationWindowLocked) return;
+        _automationWindowLocked = true;
+        _isFullScreen = false;
+        _windowScale = 1m;
+        _startupAppliedScale = 1m;
+        var minimized = WindowState == WindowState.Minimized;
+        if (!minimized) WindowState = WindowState.Normal;
+        WindowStyle = WindowStyle.SingleBorderWindow;
+        ResizeMode = ResizeMode.CanMinimize;
+        if (_scaleButton is not null)
+        {
+            _scaleButton.IsEnabled = false;
+            _scaleButton.ToolTip = "脚本运行中固定100%画面";
+        }
+        if (!minimized)
+        {
+            await FitWindowToGameScaleAsync(1m);
+            SynchronizeViewport();
+        }
+        UpdateScaleChecks();
+    }
+
+    /// <summary>只在本账号的外部自动操作已结束后解除锁定；保持100%画面，供用户继续手动操作。</summary>
+    private async Task ReleaseAutomationWindowLockAsync()
+    {
+        if (!_automationWindowLocked) return;
+        _automationWindowLocked = false;
+        if (_scaleButton is not null)
+        {
+            _scaleButton.IsEnabled = true;
+            _scaleButton.ToolTip = "按游戏原生 950×600 等比调整画面和窗口";
+        }
+        ResizeMode = ResizeMode.CanResize;
+        // 停止时不把用户最小化的游戏弹回桌面；普通窗口只补偿边框变化，不改变位置。
+        if (WindowState == WindowState.Normal)
+        {
+            await FitClientAreaAsync(NativeGameWidth, NativeGameHeight);
+            SynchronizeViewport();
+        }
+    }
+
     private WpfContextMenu CreateScaleMenu()
     {
         var menu = new WpfContextMenu();
@@ -672,6 +776,7 @@ public sealed class FlashHostWindow : Window, IDisposable
 
     private async Task ApplyWindowScaleAsync(decimal scale)
     {
+        if (_automationWindowLocked) return;
         _isFullScreen = false;
         _windowScale = scale;
         WindowState = WindowState.Normal;
@@ -761,6 +866,7 @@ public sealed class FlashHostWindow : Window, IDisposable
 
     private async Task ApplyFullScreenAsync()
     {
+        if (_automationWindowLocked) return;
         _isFullScreen = true;
         WindowStyle = WindowStyle.None;
         ResizeMode = ResizeMode.NoResize;

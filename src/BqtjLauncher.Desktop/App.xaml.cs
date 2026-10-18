@@ -81,7 +81,9 @@ public partial class App : System.Windows.Application
                     hostRequest.PanelProcessId,
                     hostRequest.LayoutProbeEnabled,
                     hostRequest.IsolationCompatibilityAudioDisabled,
-                    credential);
+                    credential,
+                    hostRequest.AutomationSessionId,
+                    hostRequest.ControlSessionId);
                 MainWindow = hostWindow;
                 // 先透明完成真实客户区校准和 Flash 启动，避免尺寸跳变、白边及初始化蓝帧。
                 GameWindowStartupDisplay.ShowLoading(hostWindow);
@@ -106,6 +108,18 @@ public partial class App : System.Windows.Application
                 },
                 provider.GetRequiredService<IGamePageSource>()));
             services.AddSingleton<LauncherModule>();
+            services.AddSingleton<IScriptAccounts>(repository);
+            services.AddSingleton(_ =>
+            {
+                var files = new ScriptFileStore(Path.Combine(AppContext.BaseDirectory, "scripts"));
+                files.EnsureBuiltInPlans();
+                return files;
+            });
+            services.AddSingleton<IScriptVision>(_ => new SharedScriptVision(Path.Combine(AppContext.BaseDirectory, "components", "automation")));
+            services.AddSingleton<IScriptExecutor, OfficialScriptExecutor>();
+            services.AddSingleton(provider => new ScriptWorkspace(provider.GetRequiredService<ScriptFileStore>(),
+                provider.GetRequiredService<IScriptAccounts>(),
+                new ScriptCoordinator(provider.GetRequiredService<LauncherModule>(), provider.GetRequiredService<IScriptExecutor>())));
             services.AddSingleton<ILauncherUpdateSource, GitHubLauncherUpdateSource>();
             services.AddSingleton<MainWindowViewModel>();
             services.AddSingleton<MainWindow>();

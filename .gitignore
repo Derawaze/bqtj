@@ -1,4 +1,7 @@
 # Build output
+# 运行目录中的用户脚本、方案和独立组件不进入源码；默认脚本在resources维护。
+/scripts/
+/components/
 [Bb]in/
 [Oo]bj/
 [Aa]rtifacts/

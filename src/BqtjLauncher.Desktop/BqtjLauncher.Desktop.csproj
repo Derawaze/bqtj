@@ -29,6 +29,8 @@
   <ItemGroup>
     <Resource Include="Assets\launcher.ico" />
     <Resource Include="Assets\launcher.png" />
+    <!-- 默认脚本作为可编辑文件交付；用户方案只在运行目录生成。 -->
+    <Content Include="..\..\resources\scripts\**\*" Link="scripts\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
   </ItemGroup>
 
 </Project>

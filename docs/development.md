@@ -54,6 +54,27 @@ NativeCookieSessionProbe按stage/ready协议等待启动，测试本地HTTP与�
 
 独立入口 `BqtjAccountTool.exe` 与主程序同目录，只传 `--account-tool`；该模式不创建面板、游戏或生产日志；当前 Windows 会话通过互斥锁保证一个工具，命名事件只通知激活，不传凭据。构建脚本和完整/覆盖包清单均检查三个 x86 入口；运行库仍只有主程序内的一份。
 
+## 脚本开发与验证
+
+脚本功能在codex/script-management，基于dev/a6246f8；只选择性迁入Maa的会话、视觉和完成判定，不恢复旧四账号上限或旧缩放实现。
+
+运行 ./tools/Test-ScriptManagement.ps1 -Compiler64Path <x64-g++路径>，准备固定Maa 5.14.2及PP-OCRv4模型，构建CPU原生组件、执行自有窗口的后台识字/模板/点击/身份/尺寸/退出检查，再运行真实WPF脚本管理窗口和托管原生协议回归。中间输出只在artifacts/dev/probes。没有生产App、账号库或游戏加载；虚构库和图片不得交付。
+
+-UiOnly仅检查窗口和队列交互，不替代视觉验证。-AllowNonInteractive用于CI无交互桌面；若系统光标无法读取，会明确标注该断言未执行，不能代替正常桌面的鼠标/前台保持证据。
+
+./tools/Build-ScriptComponent.ps1 -Compiler64Path <x64-g++路径> 只输出artifacts/dev/components/automation；默认使用本机x64 v14运行库，可通过 -VcRuntimeDirectory 指向Visual Studio Redist目录。组件独立于x86主程序，不携带另一份.NET；CPU推理仅交付必需动态库、中文模型和许可证。
+
+完整主程序开发ZIP使用原Publish-Release.ps1 -Development命令；独立组件使用 ./tools/Publish-ScriptComponent.ps1 -Version 0.0.0-dev.<UTC时间戳> -Compiler64Path <x64-g++路径>。组件ZIP直接解压到主程序目录，得到components/automation，不带版本外层。存档名指令要求protocolVersion=2，已有协议2组件可沿用；仅UI/方案存储变化无需重打组件。开始识别前拒绝旧协议并提示更新。覆盖更新保留scripts/plans、config、catalog和用户脚本，默认脚本资源随主包交付；完整及覆盖包清单都明确校验默认资源，组件另检x64及SHA256。
+
+ScriptManagementTests覆盖配置、排序、并发、已有窗口等待、关窗时机、失败隔离、取消/恢复倍率、2倍速扫描及失败后恢复；ScriptProgramTests验证中文CSV/全局默认常量及本方案覆盖、头部声明与调用权限、引用更新、顺序/并行、同次窗口复用、失败和停止、普通窗口接管及指定档切换、跨运行复用与控制互斥。AccountDailyPlanTests验证默认日常按账号ID初始化、删除不重建、首次选档回写、子方案重复调用及模板v2迁移；真实WPF探针另验证2×4选档布局、首次自动读名、取消保留扫描窗口及名称且不改写方案、全部子方案确认后回写、下次免询问和复制不占默认入口。编辑/监控模式在右下角分别显示插入/停止，账号工具默认隐藏密码列并可勾选显示编辑。真实WPF探针验证统一可编辑内置模板、双击插入/编辑、错误语句及常量原文保存而不执行、头部面板可见性、空行/非空行插入、保存确认的三种选择、全局常量保存、名称校正、改名同步、保存切换监控、隐藏不停止及默认/最小布局。ScriptProgramTests另覆盖模板一次初始化和编辑/删除后不重置，以及旧文档默认可见。SaveSlotNameReaderTests覆盖数字名称、等级后缀、对比度选择及旧协议拒绝；OfficialScriptExecutorTests用合成菜单与像素覆盖标题先于卡片出现时的等待/取消且不重发点击、八档映射、真正的日常流程、标题整体完成绿勾观察（末行不在视口内）及退出确认。OfficialCompletionVisionTests排除其他行勾、红勾、斜线、叉号和纯色块。Domain完成判断回归覆盖旧画面、证据过期、进度变化与持续3秒。实际OCR另用用户授权的保留选档画面作只读比对，不能外推其他字体、等级或全部场景。真实Flash后台兼容、跨屏DPI及两个账号连续多档仍由开发包人工验收，不以合成结果代替。
+只读现场回放：先在用户授权的游戏侧栏截图与对应Maa OCR JSON上运行 dotnet run --project native/Diagnostics/ScriptCompletionProbe/ScriptCompletionProbe.csproj -- <侧栏PNG> <OCR-JSON>。它只读取这两个文件并报告标题绿勾，不发送点击；静态截图没有本次进度增长证据，不能用它触发关窗。
+
+选档名称只读探针：构建native/Diagnostics/SaveNameProbe后，传入明确的容器PID、原生宿主PID、artifacts/dev/probes下的输出目录及组件目录。它只使用定向Flash后台截图，保存选档卡片区域及OCR对比，不发送点击、不激活/调整窗口；只在用户授权时运行，不读取账号库或生产日志。真实角色名称证据留在忽略目录，不加入源码或交付。管理页检查继续只用虚构账号。
+
+组件ZIP根固定为components/automation，直接解压到EXE所在目录。运行 ./tools/Test-ScriptUpdate.ps1 -LauncherArchivePath <完整开发包ZIP> -ComponentArchivePath <组件ZIP>，在虚构安装目录验证直接解压路径及重复合并更新保留用户方案、全局常量、默认日常初始化记录、模板初始化标记、名称资料和自定义脚本。它不运行游戏或读取用户配置。
+
+界面静态文字在XAML，动态文字在C#，具体位置和预览方法见[文案修改](ui-text-editing.md)。
+
 ## 构建与交付
 
 先阅读 [构建与版本规范](build-policy.md)，这是目录、版本和人工验收门槛的唯一规范。
@@ -67,7 +88,7 @@ $devVersion = '0.0.0-dev.' + [DateTime]::UtcNow.ToString('yyyyMMddHHmmss')
 # ./tools/Publish-Release.ps1 -ReleaseApproved -Version <已核对的新正式版本>
 ```
 
-完整包包含三个入口程序（面板、原生宿主、独立账号工具）、README、GPLv3 许可证和第三方声明；覆盖更新包包含三个入口程序和 HOTFIX-README.md，原安装目录的许可证及第三方声明必须保留。两种包均校验清单、x86入口及 SHA256，不分发 Flash 或用户数据。构建配置 Release 不代表允许正式发行；是否正式交付由模式与人工门槛决定。
+完整包包含三个入口程序（面板、原生宿主、独立账号工具）、README、GPLv3 许可证、第三方声明和默认脚本资源；覆盖更新包包含三个入口程序、HOTFIX-README.md和默认脚本资源，原安装目录的许可证及第三方声明必须保留。两种包均校验清单、x86入口及 SHA256，不分发 Flash 或用户数据。构建配置 Release 不代表允许正式发行；是否正式交付由模式与人工门槛决定。
 若使用 -NoRestore 且提示缺少win-x86资产，先运行：
 ```powershell
 dotnet restore src/BqtjLauncher.Desktop/BqtjLauncher.Desktop.csproj -r win-x86 -p:PublishSingleFile=true

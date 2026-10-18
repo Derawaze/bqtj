@@ -59,14 +59,21 @@
                     <TextBlock Text="账号列表" Style="{StaticResource SectionTitleStyle}" />
                     <StackPanel Grid.Row="1" Margin="0,12,0,10">
                         <TextBlock Text="按名称 / 账号搜索" Foreground="{StaticResource MutedTextBrush}" Margin="0,0,0,5" />
-                        <TextBox x:Name="SearchInput" TextChanged="Search_Changed" AutomationProperties.Name="按名称或账号搜索" />
+                        <Grid>
+                            <TextBox x:Name="SearchInput" TextChanged="Search_Changed" AutomationProperties.Name="按名称或账号搜索" Padding="10,7,30,7"/>
+                            <Path Data="M 11,11 L 16,16 M 12,7 A 5,5 0 1 1 2,7 A 5,5 0 1 1 12,7" Stroke="#9DAABD" StrokeThickness="1.7" Width="18" Height="18" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,8,0" IsHitTestVisible="False"/>
+                        </Grid>
                     </StackPanel>
                     <DockPanel x:Name="ListActions" Grid.Row="2" Margin="0,0,0,10">
                         <Button x:Name="DeleteButton" DockPanel.Dock="Right" Content="删除所选" Click="Delete_Click"
                                 Style="{StaticResource DangerButtonStyle}" IsEnabled="False" Margin="4,0,0,0" />
                         <StackPanel VerticalAlignment="Center">
-                            <CheckBox x:Name="SelectAllInput" Content="全选当前结果"
-                                      Foreground="{StaticResource TextBrush}" Checked="SelectAll_Changed" Unchecked="SelectAll_Changed" />
+                            <StackPanel Orientation="Horizontal">
+                                <CheckBox x:Name="SelectAllInput" Content="全选当前结果"
+                                          Foreground="{StaticResource TextBrush}" Checked="SelectAll_Changed" Unchecked="SelectAll_Changed"/>
+                                <CheckBox x:Name="ShowPasswordsInput" Content="显示密码" Margin="16,0,0,0"
+                                          Foreground="{StaticResource TextBrush}" Checked="ShowPasswords_Changed" Unchecked="ShowPasswords_Changed"/>
+                            </StackPanel>
                             <TextBlock x:Name="SelectionSummary" Foreground="{StaticResource MutedTextBrush}" Margin="0,4,0,0" />
                         </StackPanel>
                     </DockPanel>
@@ -93,7 +100,7 @@
                                                 Width="*" MinWidth="95" EditingElementStyle="{StaticResource AccountEditStyle}" />
                             <DataGridTextColumn Header="账号" Binding="{Binding Username, UpdateSourceTrigger=Explicit}" SortMemberPath="Username"
                                                 Width="*" MinWidth="95" EditingElementStyle="{StaticResource AccountEditStyle}" />
-                            <DataGridTextColumn Header="密码" Binding="{Binding Password, UpdateSourceTrigger=Explicit}" SortMemberPath="Password"
+                            <DataGridTextColumn x:Name="PasswordColumn" Visibility="Collapsed" Header="密码" Binding="{Binding Password, UpdateSourceTrigger=Explicit}" SortMemberPath="Password"
                                                 Width="*" MinWidth="95" EditingElementStyle="{StaticResource AccountEditStyle}" />
                         </DataGrid.Columns>
                     </DataGrid>
@@ -132,7 +139,7 @@
         </Grid>
         <StackPanel Grid.Row="2" Margin="0,12,0,0">
             <TextBlock x:Name="Feedback" TextWrapping="Wrap" MaxHeight="64" />
-            <TextBlock Text="账号和密码在此明文显示；导出 TXT 也含明文密码，仅导出已保存凭据的记录。"
+            <TextBlock Text="密码默认隐藏，勾选“显示密码”后可查看和编辑；导出 TXT 包含明文密码。"
                        Margin="0,6,0,0" TextWrapping="Wrap" Foreground="{StaticResource MutedTextBrush}" />
         </StackPanel>
     </Grid>
