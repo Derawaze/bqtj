@@ -12,6 +12,30 @@ namespace BqtjLauncher.Application.Tests;
 public sealed class OfficialScriptExecutorTests
 {
     private static readonly string[] ExpectedActions = ["读取存档", "存档8", "助理", "日常操作复制", "运行", "确定运行", "退出存档", "确定退出"];
+    private static readonly string[] TakeoverActions = ["系统", "退出存档", "确定退出"];
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task TakeoverCanExitWorldThroughObservedSystemGear(bool rightFooterExit)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "bqtj-takeover-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var repository = new SqliteGameProfileRepository(Path.Combine(root, "fake.db"));
+            await using var launcher = new LauncherModule(repository, new FakeRuntime());
+            await launcher.InitializeAsync();
+            var profile = await launcher.CreateProfileAsync("虚构接管账号");
+            var session = (await launcher.StartAutomationSessionAsync(profile.Id))!;
+            var vision = new MenuVision { State = "world", RightFooterExit = rightFooterExit };
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+            await new OfficialScriptExecutor(vision).ExitSaveAsync(session, (_, _) => { }, timeout.Token);
+            Assert.Equal("home", vision.State);
+            Assert.Equal(TakeoverActions, vision.Actions);
+        }
+        finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); Directory.Delete(root, true); }
+    }
     [Theory]
     [InlineData(0)]
     [InlineData(2)]
@@ -112,9 +136,10 @@ public sealed class OfficialScriptExecutorTests
 
     private sealed class MenuVision : IScriptVision
     {
+        public bool RightFooterExit { get; init; }
         public int IncompleteFrames { get; init; }
         private int _menuFrames;
-        public string State { get; private set; } = "home";
+        public string State { get; set; } = "home";
         public List<string> Actions { get; } = [];
         public int SelectedSave { get; private set; }
         private long _snapshot;
@@ -164,7 +189,7 @@ public sealed class OfficialScriptExecutorTests
                     // 实际完成画面末行在侧栏视口外，只能看到标题23/23及左侧绿勾。
                     if (done == 23) State = "saved";
                 }
-                else Add("退出存档", new(400, 300, 100, 25));
+                else Add("退出存档", RightFooterExit ? new(764, 435, 53, 18) : new(400, 300, 100, 25));
             }
             else if (State == "exit")
             {
@@ -205,7 +230,10 @@ public sealed class OfficialScriptExecutorTests
                 case "home": Actions.Add("读取存档"); State = "selection"; break;
                 case "selection":
                     SelectedSave = (y - 218) / 61 * 2 + (x > 480 ? 2 : 1); Actions.Add("存档" + SelectedSave); State = "world"; break;
-                case "world": Actions.Add("助理"); State = "assistant"; break;
+                case "world":
+                    if (x == 742 && y == 565) { Actions.Add("系统"); State = "saved"; }
+                    else { Actions.Add("助理"); State = "assistant"; }
+                    break;
                 case "assistant": Actions.Add("日常操作复制"); State = "selected"; break;
                 case "selected": Actions.Add("运行"); State = "prompt"; break;
                 case "prompt": Actions.Add("确定运行"); State = "running"; break;

@@ -16,6 +16,8 @@
 | 宿主启动 | 先stage再ready，分阶段等待；启动握手读超时后stdout不可复用，必须重启宿主 | NativeHostStartupDetailTests、NativeHostStartupCommandsTests；不要恢复单一固定超时 |
 | 就绪后的命令恢复 | 每个宿主只有一个后台 stdout 读取者；请求与回执带编号，10秒超时只结束本次等待，旧回执不能完成新请求；窗口关闭取消当前和排队操作 | NativeHostCommandChannelTests、Test-NativeCommandRecovery.ps1；匿名管道夹具不证明真实游戏长时卡死根因已修复 |
 | 退出残留 | OnExit同步等待释放，异步关闭链若捕获WPF上下文会互相等待；退出等待、CloseAllAsync、DisposeAsync使用ConfigureAwait(false) | GameSessionShutdownTests旧代码失败；正常退出、5秒超时终止和LauncherModule整层释放回归通过。不代表所有残留原因都已排除 |
+| 脚本接管卡在系统页 | 城镇“退出存档”从x=764开始，旧OCR区域止于760；退出、重玩统一覆盖完整系统菜单 | OfficialScriptExecutorTests使用实际右下按钮坐标，旧范围失败；不能只用居中的合成按钮 |
+| 脚本冷启动暂停 | 加载期间控制请求5秒超时会提前断开，EndOfStream未被启动等待处理；幂等倍率/尺寸设置在原60秒预算内等待恢复 | ScriptManagementTests覆盖两种控制请求断开、仅启动一个会话及恢复倍率；不重放游戏点击 |
 
 ## 内存与恢复
 

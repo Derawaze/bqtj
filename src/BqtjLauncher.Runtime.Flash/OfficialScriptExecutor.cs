@@ -17,13 +17,27 @@ public sealed class OfficialScriptExecutor(IScriptVision vision) : IScriptExecut
     private readonly ConcurrentDictionary<Guid, AutomationWindowTarget> _targets = new();
     private static readonly ScriptRect SaveTitle = new(240, 135, 480, 65);
     private static readonly ScriptRect Sidebar = new(759, 154, 182, 420);
+    // 系统菜单右下“退出存档”从x=764开始，必须覆盖完整菜单，不能沿用仅含中部按钮的区域。
+    private static readonly ScriptRect SystemMenuRegion = new(90, 20, 760, 510);
     public Task BeginAsync(CancellationToken token) => vision.BeginAsync(token);
     public Task EndAsync() => vision.EndAsync();
 
     public async Task<bool> IsInSaveAsync(AutomationGameSession session, CancellationToken token)
     {
         var frame = await Create(session, (_, _) => { }, token).ReadAsync(new(0, 0, 950, 100)).ConfigureAwait(false);
-        return Unique(frame, text => text == "助理") is not null;
+        return Unique(frame, text => text == "助理") is not null || HasBattleHud(frame)
+            || frame.Text.Any(line => Compact(line.Text) == "系统");
+    }
+
+    /// <summary>接管窗口只借助关卡HUD判断当前场景，不依赖刷材料的识图或执行模块。</summary>
+    private static bool HasBattleHud(ScriptVisionFrame frame)
+    {
+        var text = string.Join(" ", frame.Text.Where(line => line.Bounds.X >= 800 && line.Bounds.Y < 75)
+            .OrderBy(line => line.Bounds.X).Select(line => line.Text));
+        var match = System.Text.RegularExpressions.Regex.Match(text, @"(?<!\d)(\d{1,2})\s*/\s*(\d{1,2}?)\s*\d{2}\s*[:：][0-5]\d(?!\d)");
+        return match.Success && int.Parse(match.Groups[2].Value, System.Globalization.CultureInfo.InvariantCulture) > 0
+            && int.Parse(match.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture)
+                <= int.Parse(match.Groups[2].Value, System.Globalization.CultureInfo.InvariantCulture);
     }
 
     public async Task<IReadOnlyList<SaveSlot>> ReadSavesAsync(AutomationGameSession session, Action<string> stage, CancellationToken token)
@@ -210,15 +224,47 @@ public sealed class OfficialScriptExecutor(IScriptVision vision) : IScriptExecut
     public async Task ExitSaveAsync(AutomationGameSession session, Action<string, ScriptRunState> stage, CancellationToken token)
     {
         var context = Create(session, stage, token);
-        context.Stage("退出已完成存档");
-        // 日常最后保存停留在设置界面；显式退出也可从普通游戏画面打开设置，不补点保存。
-        var settings = await context.ReadAsync(new(180, 80, 580, 450)).ConfigureAwait(false);
-        if (Unique(settings, text => text == "退出存档") is null)
-            await context.ClickTextAsync(new(0, 0, 950, 600), text => text == "设置", 0, -20).ConfigureAwait(false);
-        await context.ClickTextAsync(new(180, 80, 580, 450), text => text == "退出存档").ConfigureAwait(false);
-        await context.WaitTextAsync(new(200, 130, 550, 230), text => text.Contains("退出", StringComparison.Ordinal)).ConfigureAwait(false);
-        await context.ClickTextAsync(new(280, 250, 400, 130), text => text == "确定").ConfigureAwait(false);
+        context.Stage("退出当前存档");
+        // 实机齿轮入口叫“系统”；关卡内退出存档为禁用态，必须先返回城镇再退出。
+        var settings = await OpenSystemAsync(context).ConfigureAwait(false);
+        if (Unique(settings, text => text == "退出关卡") is not null)
+        {
+            await ConfirmSystemActionAsync(context, "退出关卡").ConfigureAwait(false);
+            await context.WaitTextAsync(new(0, 0, 950, 100), text => text == "助理").ConfigureAwait(false);
+            await OpenSystemAsync(context).ConfigureAwait(false);
+        }
+        await ConfirmSystemActionAsync(context, "退出存档").ConfigureAwait(false);
         await context.WaitTextAsync(new(350, 530, 270, 70), text => text == "读取存档").ConfigureAwait(false);
+    }
+
+    /// <summary>先确认场景再点其齿轮；统一菜单复用已打开的保存/系统界面。</summary>
+    private static async Task<ScriptVisionFrame> OpenSystemAsync(Context context)
+    {
+        while (true)
+        {
+            var frame = await context.ReadAsync(new(0, 0, 950, 600)).ConfigureAwait(false);
+            if (Unique(frame, text => text == "退出存档") is not null || Unique(frame, text => text == "重玩关卡") is not null) return frame;
+            var battle = HasBattleHud(frame);
+            if (!battle && Unique(frame, text => text == "助理") is null)
+                throw new InvalidOperationException("未确认城镇或关卡画面，无法打开系统菜单；窗口保留。");
+            try { await context.ClickAsync(battle ? 29 : 742, battle ? 574 : 565).ConfigureAwait(false); }
+            catch (ReobserveException) { continue; }
+            return (await context.WaitTextAsync(SystemMenuRegion, text => text == "退出存档").ConfigureAwait(false)).Item1;
+        }
+    }
+
+    /// <summary>只确认与本次按钮文字一致的弹窗；已发出的重玩/退出不重复发送。</summary>
+    private static async Task ConfirmSystemActionAsync(Context context, string action)
+    {
+        await context.ClickTextAsync(SystemMenuRegion, text => text == action).ConfigureAwait(false);
+        while (true)
+        {
+            var (frame, _) = await context.WaitTextAsync(new(200, 130, 550, 150), text => text.Contains(action, StringComparison.Ordinal)).ConfigureAwait(false);
+            var buttons = await context.ReadAsync(new(365, 290, 110, 65), frame.SnapshotId).ConfigureAwait(false);
+            var confirm = Unique(buttons, text => text == "确定") ?? throw new InvalidOperationException("确认框缺少唯一确定按钮，窗口保留。");
+            try { await context.ClickAsync(confirm.Bounds.X + confirm.Bounds.Width / 2, confirm.Bounds.Y + confirm.Bounds.Height / 2).ConfigureAwait(false); return; }
+            catch (ReobserveException) { /* 输入未发出，恢复后只重读当前确认框。 */ }
+        }
     }
 
     public async Task ReleaseAsync(AutomationGameSession session)

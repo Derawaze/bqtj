@@ -116,7 +116,7 @@ public partial class MainWindow : Window
         RunDailyButton.IsEnabled = daily is not null && !_scripts.IsBusy;
         EditDailyButton.IsEnabled = daily is not null;
         DailyScriptStatus.Text = daily is null ? "该账号暂无面板可用的日常；删除或隐藏后可在脚本管理中配置。"
-            : "按本方案运行；首次选择存档后会记住，“编辑日常”可修改。";
+            : "首次自动读名并选择存档，之后会记住；“编辑日常”可修改。";
         ScriptQueueStatus.Text = _scripts.Coordinator.IsRunning ? "正在运行：" + _scripts.Coordinator.RunningName + "。在脚本管理中查看进度。"
             : _scripts.IsBusy ? _scripts.PreparationStage
             : others.Length == 0 ? "其他方案可在脚本管理中设置“面板可见,是”。" : "";

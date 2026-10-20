@@ -128,11 +128,13 @@ public sealed class ScriptWorkspace : IAsyncDisposable
                     PreparationStage = "请选择“" + selection.Account.Name + "”的存档";
                     Changed?.Invoke(this, EventArgs.Empty);
                     var number = SelectSaveAsync is null ? null : await SelectSaveAsync(selection);
+                    preparation.Token.ThrowIfCancellationRequested();
                     if (number is null) throw new OperationCanceledException("已取消选择存档，脚本未启动。");
                     var source = changes.GetValueOrDefault(selection.PlanId)
                         ?? (selection.PlanId == plan.Id ? plan : Plans.Single(candidate => candidate.Id == selection.PlanId));
                     changes[selection.PlanId] = AccountDailyPlans.ApplySelection(source, selection, number.Value);
                 }
+                preparation.Token.ThrowIfCancellationRequested();
                 foreach (var updated in changes.Values) _files.SavePlan(updated);
                 if (changes.TryGetValue(plan.Id, out var configured)) plan = configured;
                 Refresh();

@@ -52,7 +52,7 @@ public sealed class AccountDailyPlanTests : IDisposable
         Assert.Equal(plan.Id, request.PlanId); Assert.Equal(account.Id, request.Account.Id);
         var configured = AccountDailyPlans.ApplySelection(plan, request, 5);
         Assert.Contains("日常操作,本账号,存档5", configured.Source);
-        Assert.Contains("第一次运行会弹出", configured.Source);
+        Assert.All(plan.Source.Split('\n').Where(line => line.TrimStart().StartsWith('#')), comment => Assert.Contains(comment, configured.Source));
         Assert.Equal(5, Assert.Single(new ScriptProgramCompiler([], [account], []).Compile(configured).Commands).SaveNumber);
         Assert.Empty(AccountDailyPlans.RequiredSelections(new ScriptProgramCompiler([], [account], []).Compile(configured)));
         Assert.Contains(AccountDailyPlans.PendingSave, plan.Source);

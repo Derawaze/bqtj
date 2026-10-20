@@ -226,6 +226,26 @@ public sealed class ScriptManagementTests : IDisposable
         Assert.Equal(1, executor.EndCount);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task StartupWaitsAfterLoadingClosesAControlReply(bool lockRequest)
+    {
+        var fixture = await FixtureAsync(1);
+        await using var launcher = fixture.Launcher;
+        fixture.Runtime.ConfigureSession = session =>
+        {
+            session.SpeedReplyMissing = !lockRequest;
+            session.LockReplyMissing = lockRequest;
+        };
+        var executor = new FakeExecutor();
+        await using var coordinator = new ScriptCoordinator(launcher, executor);
+        var result = await coordinator.ReadSavesAsync(fixture.Profiles[0].Id, _ => { }, default, keepWindow: true);
+        Assert.Equal(8, result.Count);
+        Assert.Single(fixture.Runtime.Sessions);
+        Assert.Equal(TemporarySpeeds, fixture.Runtime.Sessions.Single().SpeedChanges);
+    }
+
     [Fact]
     public async Task ScanFailureUnlocksRetainedWindowAndEndsVisionLease()
     {
@@ -266,10 +286,11 @@ public sealed class ScriptManagementTests : IDisposable
 
     private sealed class FakeRuntime : IAutomationGameRuntime
     {
+        public Action<FakeSession>? ConfigureSession { get; set; }
         public List<FakeSession> Sessions { get; } = [];
         public Task<GamePageResolution> ResolveGamePageAsync() => throw new NotSupportedException();
         public Task<IGameSession> StartAsync(GameProfile profile, CancellationToken token = default)
-        { var session = new FakeSession(profile.Id); Sessions.Add(session); return System.Threading.Tasks.Task.FromResult<IGameSession>(session); }
+        { var session = new FakeSession(profile.Id); ConfigureSession?.Invoke(session); Sessions.Add(session); return System.Threading.Tasks.Task.FromResult<IGameSession>(session); }
         public Task<IGameSession> StartAutomationAsync(GameProfile profile, CancellationToken token = default) => StartAsync(profile, token);
     }
     private sealed class FakeSession(Guid profile) : IAutomationGameSession
@@ -285,11 +306,19 @@ public sealed class ScriptManagementTests : IDisposable
         public void Activate() => ActivateCount++;
         public Task CloseAsync(CancellationToken token = default) { CloseCount++; _closed.TrySetResult(); return System.Threading.Tasks.Task.CompletedTask; }
         public bool WindowLocked { get; private set; } = true;
-        public Task AcquireWindowLockAsync(CancellationToken token = default) => System.Threading.Tasks.Task.CompletedTask;
+        public bool SpeedReplyMissing, LockReplyMissing;
+        public Task AcquireWindowLockAsync(CancellationToken token = default)
+        {
+            if (LockReplyMissing) { LockReplyMissing = false; throw new EndOfStreamException(); }
+            return System.Threading.Tasks.Task.CompletedTask;
+        }
         public Task ReleaseWindowLockAsync(CancellationToken token = default) { WindowLocked = false; return System.Threading.Tasks.Task.CompletedTask; }
         public Task<AutomationWindowTarget> GetTargetAsync(CancellationToken token = default) => System.Threading.Tasks.Task.FromResult(new AutomationWindowTarget(Id, profile, 1, 2, 3, 950, 600));
         public Task<SpeedMultiplier> ApplySpeedAsync(SpeedMultiplier speed, CancellationToken token = default)
-        { var previous = Speed; Speed = speed; SpeedChanges.Add(speed.Value); return System.Threading.Tasks.Task.FromResult(previous); }
+        {
+            if (SpeedReplyMissing) { SpeedReplyMissing = false; throw new EndOfStreamException(); }
+            var previous = Speed; Speed = speed; SpeedChanges.Add(speed.Value); return System.Threading.Tasks.Task.FromResult(previous);
+        }
     }
     private sealed class FakeExecutor : IScriptExecutor
     {

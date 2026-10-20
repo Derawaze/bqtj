@@ -34,7 +34,7 @@ public interface IScriptExecutor
         SpeedMultiplier speed, Action<string, ScriptRunState> stage, CancellationToken token);
     Task ExitSaveAsync(AutomationGameSession session, Action<string, ScriptRunState> stage, CancellationToken token);
     Task ReleaseAsync(AutomationGameSession session);
-    /// <summary>接管已有游戏时只观察当前存档，不自动退出未知存档。</summary>
+    /// <summary>接管时只观察是否进入存档；指定档切换由持有互斥会话的调度器安排。</summary>
     Task<bool> IsInSaveAsync(AutomationGameSession session, CancellationToken token) => Task.FromResult(false);
 }
 

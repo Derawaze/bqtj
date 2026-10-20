@@ -52,7 +52,7 @@
         </DockPanel>
         <Border Grid.Row="1" Background="#141B27" BorderBrush="#35455C" BorderThickness="1" CornerRadius="7" Padding="12,8" Margin="0,0,0,12">
             <StackPanel>
-                <TextBlock Text="自动运行游戏内置「日常操作复制」；游戏窗口可以被遮挡，但不能最小化。具体语句说明见内置模板注释。" Foreground="{StaticResource MutedTextBrush}" FontSize="12" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                <TextBlock Text="“日常操作”会运行游戏内置「日常操作复制」；游戏窗口可以被遮挡，但不能最小化。语句说明见模板注释。" Foreground="{StaticResource MutedTextBrush}" FontSize="12" Margin="0,4,0,0" TextWrapping="Wrap"/>
             </StackPanel>
         </Border>
         <Grid Grid.Row="2">

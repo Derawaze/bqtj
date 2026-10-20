@@ -200,7 +200,10 @@ public sealed class ScriptCoordinator(LauncherModule launcher, IScriptExecutor e
         while (!session.Completion.IsCompleted)
         {
             try { return await session.ApplySpeedAsync(speed, startup.Token).ConfigureAwait(false); }
-            catch (InvalidOperationException) { await Task.Delay(250, startup.Token).ConfigureAwait(false); }
+            // 冷启动时容器调度器可能忙于加载，控制服务会先结束超时连接。
+            // 倍率是幂等设置，可在原60秒启动预算内重试；游戏点击不经过这里。
+            catch (Exception error) when (error is InvalidOperationException or EndOfStreamException)
+            { await Task.Delay(250, startup.Token).ConfigureAwait(false); }
         }
         throw new InvalidOperationException("本次游戏窗口已关闭。");
     }
@@ -213,7 +216,8 @@ public sealed class ScriptCoordinator(LauncherModule launcher, IScriptExecutor e
         while (!session.Completion.IsCompleted)
         {
             try { await session.AcquireWindowLockAsync(startup.Token).ConfigureAwait(false); return; }
-            catch (InvalidOperationException) { await Task.Delay(250, startup.Token).ConfigureAwait(false); }
+            catch (Exception error) when (error is InvalidOperationException or EndOfStreamException)
+            { await Task.Delay(250, startup.Token).ConfigureAwait(false); }
         }
         throw new InvalidOperationException("游戏窗口已关闭。");
     }

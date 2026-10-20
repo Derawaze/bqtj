@@ -294,6 +294,11 @@ internal static class Program
         await UntilAsync(() => workspace.Plans.Any(plan => plan.Name == configured.Name + " 副本"));
         Require(workspace.Plans.Single(plan => plan.Name == configured.Name + " 副本").DefaultAccountId is null, "复制日常不占用账号默认入口");
         Save(manager, Path.Combine(output, "account-daily-editor.png"));
+        workspace.SelectSaveAsync = _ => { workspace.Stop(); return Task.FromResult<int?>(5); };
+        try { await workspace.RunAsync(second); throw new InvalidOperationException("准备阶段停止不应运行"); }
+        catch (OperationCanceledException) { }
+        Require(workspace.Plans.Single(plan => plan.Id == second.Id).Source.Contains(AccountDailyPlans.PendingSave, StringComparison.Ordinal),
+            "停止后选档回执不得改写方案");
         manager.Hide();
     }
     private static async Task CheckMainAsync(string root, string output, ScriptWorkspace workspace)
