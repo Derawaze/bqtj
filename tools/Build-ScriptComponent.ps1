@@ -45,6 +45,6 @@ New-Item -ItemType Directory -Path (Join-Path $output 'licenses') -Force | Out-N
 Copy-Item -Path (Join-Path $repositoryRoot 'resources/automation-licenses/*') -Destination (Join-Path $output 'licenses') -Force
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'ScriptComponent.README.md') -Destination (Join-Path $output 'README.md') -Force
 Copy-Item -LiteralPath (Join-Path $repositoryRoot 'THIRD_PARTY_NOTICES.md') -Destination (Join-Path $output 'THIRD_PARTY_NOTICES.md') -Force
-@{ version = 1; protocolVersion = 2; maaVersion = '5.14.2'; architecture = 'x64'; inference = 'cpu' } | ConvertTo-Json |
+@{ version = 1; protocolVersion = 7; maaVersion = '5.14.2'; architecture = 'x64'; inference = 'cpu' } | ConvertTo-Json |
     Set-Content -LiteralPath (Join-Path $output 'component.json') -Encoding utf8
 Write-Output $output

@@ -1,7 +1,8 @@
 ﻿#Requires -Version 7.0
 [CmdletBinding()]
 param([Parameter(Mandatory)][string] $LauncherArchivePath,
-      [Parameter(Mandatory)][string] $ComponentArchivePath)
+      [Parameter(Mandatory)][string] $ComponentArchivePath,
+      [string] $ScriptArchivePath)
 
 # 只在仓库artifacts/dev/probes创建虚构安装目录；模拟文件夹合并，不触碰用户安装、账号库或日志。
 $ErrorActionPreference = 'Stop'
@@ -55,9 +56,22 @@ $preserved = @($plan,$plan2,$custom,$catalog,$globals,$marker,$marker2,$defaults
 $before = @($preserved | ForEach-Object { (Get-FileHash -LiteralPath $_).Hash })
 Merge-Archive $LauncherArchivePath -StripLauncherRoot
 Merge-Archive $ComponentArchivePath
+if ($ScriptArchivePath) {
+    # 独立脚本包不含运行时生成的plans/config/catalog，拒绝任何额外覆盖路径。
+    $allowed = @('scripts/README.md', 'scripts/official-daily/script.json') + @(Get-ChildItem -LiteralPath (Join-Path (Split-Path $PSScriptRoot -Parent) 'resources/automation/sky-top') -File | ForEach-Object { 'scripts/resources/loot/' + $_.Name })
+    $scriptsZip = [IO.Compression.ZipFile]::OpenRead((Resolve-Path -LiteralPath $ScriptArchivePath).Path)
+    try {
+        $names = @($scriptsZip.Entries | Where-Object Name | ForEach-Object { $_.FullName.Replace([char]92, [char]47) })
+        if ($names.Count -ne $allowed.Count -or @($names | Where-Object { $_ -notin $allowed }).Count -or @($allowed | Where-Object { $_ -notin $names }).Count) { throw '独立脚本包清单不匹配。' }
+    } finally { $scriptsZip.Dispose() }
+    $loot = Join-Path $root 'scripts/resources/loot/catalog.json'
+    [IO.File]::WriteAllText($loot, 'outdated-resource')
+    Merge-Archive $ScriptArchivePath
+    if ((Get-Content -LiteralPath $loot -Raw | ConvertFrom-Json).version -ne 3) { throw '独立脚本更新未替换资源规则。' }
+}
 $after = @($preserved | ForEach-Object { (Get-FileHash -LiteralPath $_).Hash })
 if (($before -join ',') -ne ($after -join ',')) { throw '覆盖更新改变了用户方案或用户脚本。' }
 if (!(Test-Path -LiteralPath (Join-Path $root 'BqtjLauncher.Desktop.exe')) -or
     !(Test-Path -LiteralPath (Join-Path $root 'components/automation/BqtjScriptVision.exe'))) { throw '组件没有直接落到主程序目录下的标准位置。' }
-Write-Output 'PASS: 组件直接解压到EXE目录可用；两次合并更新保留v1/v2方案、全局常量、默认日常初始化记录、模板标记、名称资料及自定义脚本。'
+Write-Output 'PASS: 组件直接解压到EXE目录可用；两次合并更新保留v1/v2方案、全局常量、默认日常初始化记录、模板标记、名称资料及自定义脚本；可独立合并更新脚本资源。'
 Write-Output $root

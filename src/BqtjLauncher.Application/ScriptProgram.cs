@@ -8,7 +8,7 @@ public sealed record ScriptStatement(int Line, string[] Words);
 /// <summary>中文CSV语句的词法与定向改名工具，编辑器、校验器和引用更新共用同一解释。</summary>
 public static class ScriptSyntax
 {
-    public static readonly string[] Operations = ["日常操作", "读取存档名称", "启动存档", "退出存档", "关闭窗口", "调用", "并行开始", "并行结束", "方案设置"];
+    public static readonly string[] Operations = ["日常操作", "读取存档名称", "启动存档", "刷取每日材料", "退出存档", "关闭窗口", "调用", "并行开始", "并行结束", "方案设置"];
     public static string Quote(string value) => value.Contains(',') || value.Contains('"') || value != value.Trim()
         ? "\"" + value.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"" : value;
     public static string Statement(params string[] words) => string.Join(",", words.Select(Quote));
@@ -101,7 +101,8 @@ public static class ScriptSyntax
             catch (InvalidDataException) { continue; }
             if (statement is null) continue;
             var words = statement.Words;
-            var isAccountOperation = words[0] is "日常操作" or "读取存档名称" or "启动存档" or "退出存档" or "关闭窗口";
+            var isAccountOperation = words[0] is "日常操作" or "读取存档名称" or "启动存档" or "退出存档" or "关闭窗口"
+                || (words[0] == "刷取每日材料" && words.Length == 6);
             if (words.Length < 2 || (planReference ? words[0] != "调用" : !isAccountOperation) || words[1] != oldName) continue;
             words[1] = newName;
             lines[index] = Statement(words);
@@ -114,9 +115,15 @@ public static class ScriptSyntax
 public abstract record ScriptNode;
 public sealed record ScriptBlock(bool Parallel, IReadOnlyList<ScriptNode> Children) : ScriptNode;
 public sealed record ScriptCommand(int Index, int Line, string Path, string Operation, ScriptAccount Account,
-    int SaveNumber, decimal Speed, ScriptDefinition? LegacyDefinition = null, string SaveName = "", Guid PlanId = default) : ScriptNode
+    int SaveNumber, decimal Speed, ScriptDefinition? LegacyDefinition = null, string SaveName = "", Guid PlanId = default,
+    DailyMaterialFarmOptions? Farming = null) : ScriptNode
 {
-    public string Label => $"{Path} · 第{Line}行 · {Operation}－{Account.Name}" + (SaveNumber == 0 ? "" : $"－存档{SaveNumber}") + (SaveName.Length == 0 ? "" : "－" + SaveName);
+    /// <summary>可选的游戏内官方脚本名；空值按“日常操作复制、日常操作”顺序选择。</summary>
+    public string? OfficialScriptName { get; init; }
+    /// <summary>短式操作继承前一启动语句的选档位置，首次回写不能误改地图或难度参数。</summary>
+    public int SaveSelectionLine { get; init; } = Line;
+    public string Label => $"{Path} · 第{Line}行 · {Operation}－{Account.Name}" + (SaveNumber == 0 ? "" : $"－存档{SaveNumber}") + (SaveName.Length == 0 ? "" : "－" + SaveName)
+        + (Farming is null ? "" : $"－{Farming.Map}－{Farming.Difficulty}－{(Farming.Runs is { } runs ? runs + "次" : "刷满")}");
 }
 public sealed record CompiledScript(string Name, ScriptBlock Root, IReadOnlyList<ScriptCommand> Commands, int ConcurrentAccounts);
 
@@ -161,6 +168,7 @@ public sealed class ScriptProgramCompiler(IReadOnlyList<ScriptPlan> plans, IRead
     private ScriptBlock ReadBlock(ScriptPlan plan, string path, IReadOnlyList<ScriptStatement> lines, ref int position, bool parallel, bool nested)
     {
         var children = new List<ScriptNode>();
+        ScriptCommand? currentSave = null;
         while (position < lines.Count)
         {
             var statement = lines[position++];
@@ -176,6 +184,7 @@ public sealed class ScriptProgramCompiler(IReadOnlyList<ScriptPlan> plans, IRead
             {
                 RequireCount(statement, 1);
                 children.Add(ReadBlock(plan, path, lines, ref position, true, true));
+                currentSave = null;
                 continue;
             }
             if (!ScriptSyntax.Operations.Contains(operation)) throw ScriptSyntax.Error(statement.Line, "未知语句：" + operation);
@@ -197,10 +206,21 @@ public sealed class ScriptProgramCompiler(IReadOnlyList<ScriptPlan> plans, IRead
                 ScriptSyntax.ApplySettings(child);
                 if (!child.IsSubPlan) throw ScriptSyntax.Error(statement.Line, "该方案未设为子方案：" + name);
                 children.Add(CompilePlan(child, path + " / " + name));
+                currentSave = null;
                 continue;
             }
-            var withSave = operation is "日常操作" or "启动存档";
-            RequireCount(statement, withSave ? 3 : 2);
+            if (operation == "刷取每日材料" && words.Length == 4)
+            {
+                if (parallel || currentSave is null)
+                    throw ScriptSyntax.Error(statement.Line, "短式刷材料语句前需在同一串行方案内启动存档；也可显式填写账号、存档。");
+                var options = ReadFarming(plan, statement, 1);
+                var farming = Add(statement.Line, path, operation, currentSave.Account, currentSave.SaveNumber, plan.Speed, planId: plan.Id,
+                    farming: options, selectionLine: currentSave.SaveSelectionLine);
+                children.Add(farming);
+                continue;
+            }
+            var withSave = operation is "日常操作" or "启动存档" or "刷取每日材料";
+            RequireCount(statement, operation == "刷取每日材料" ? 6 : operation == "日常操作" && words.Length == 4 ? 4 : withSave ? 3 : 2);
             var accountName = ResolveConstant(plan, words[1], statement.Line);
             ScriptAccount? account;
             if (plan.AccountBindings.TryGetValue(accountName, out var accountId)) account = accounts.SingleOrDefault(candidate => candidate.Id == accountId);
@@ -223,10 +243,25 @@ public sealed class ScriptProgramCompiler(IReadOnlyList<ScriptPlan> plans, IRead
                 else if (!int.TryParse(save.StartsWith("存档", StringComparison.Ordinal) ? save[2..] : save, out number) || number is < 1 or > 8)
                     throw ScriptSyntax.Error(statement.Line, "存档必须为存档1～存档8。");
             }
-            children.Add(Add(statement.Line, path, operation, account, number, plan.Speed, planId: plan.Id));
+            var command = Add(statement.Line, path, operation, account, number, plan.Speed, planId: plan.Id,
+                farming: operation == "刷取每日材料" ? ReadFarming(plan, statement, 3) : null,
+                officialScriptName: operation == "日常操作" && words.Length == 4 ? ResolveConstant(plan, words[3], statement.Line) : null);
+            children.Add(command);
+            if (withSave && !parallel) currentSave = command;
+            else if (currentSave?.Account.Id == account.Id) currentSave = null;
         }
         if (nested) throw new InvalidDataException(path + "：并行开始缺少并行结束。");
         return CheckParallel(new(parallel, children), 1);
+    }
+
+    private DailyMaterialFarmOptions ReadFarming(ScriptPlan plan, ScriptStatement statement, int offset)
+    {
+        try
+        {
+            return DailyMaterialFarmOptions.Parse(ResolveConstant(plan, statement.Words[offset], statement.Line),
+                ResolveConstant(plan, statement.Words[offset + 1], statement.Line), ResolveConstant(plan, statement.Words[offset + 2], statement.Line));
+        }
+        catch (InvalidDataException error) { throw ScriptSyntax.Error(statement.Line, error.Message); }
     }
 
     private static void RequireCount(ScriptStatement statement, int count)
@@ -248,10 +283,12 @@ public sealed class ScriptProgramCompiler(IReadOnlyList<ScriptPlan> plans, IRead
         return value;
     }
 
-    private ScriptCommand Add(int line, string path, string operation, ScriptAccount account, int number, decimal speed, ScriptDefinition? definition = null, Guid planId = default)
+    private ScriptCommand Add(int line, string path, string operation, ScriptAccount account, int number, decimal speed, ScriptDefinition? definition = null, Guid planId = default,
+        DailyMaterialFarmOptions? farming = null, int? selectionLine = null, string? officialScriptName = null)
     {
         var command = new ScriptCommand(_commands.Count, line, path, operation, account, number, speed, definition,
-            saveNames?.GetValueOrDefault(account.Id)?.FirstOrDefault(slot => slot.Number == number)?.Name ?? "", planId);
+            saveNames?.GetValueOrDefault(account.Id)?.FirstOrDefault(slot => slot.Number == number)?.Name ?? "", planId, farming)
+        { SaveSelectionLine = selectionLine ?? line, OfficialScriptName = officialScriptName };
         _commands.Add(command); return command;
     }
 

@@ -7,7 +7,7 @@ internal static class DailyRunPrompt
 {
     private static readonly (char Open, char Close)[] NameQuotes = [('《', '》'), ('〈', '〉'), ('“', '”'), ('「', '」'), ('『', '』'), ('"', '"')];
 
-    public static bool IsExpected(string text)
+    public static bool IsExpected(string text, string scriptName = "日常操作复制")
     {
         text = string.Concat(text.Normalize(NormalizationForm.FormKC).Where(c => !char.IsWhiteSpace(c)));
         const string prefix = "是否开始运行";
@@ -20,6 +20,6 @@ internal static class DailyRunPrompt
                 break;
             }
         // 脚本名必须完整相等，避免将带相同前缀的其他脚本误判为当前日常。
-        return name == "日常操作复制";
+        return name == string.Concat(scriptName.Normalize(NormalizationForm.FormKC).Where(c => !char.IsWhiteSpace(c)));
     }
 }

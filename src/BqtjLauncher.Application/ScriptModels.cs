@@ -89,7 +89,7 @@ public sealed record ScriptCatalogItem(string Path, ScriptDefinition? Definition
     public string Name => Definition?.Name ?? System.IO.Path.GetFileName(Path);
     public string State => Error ?? "可运行";
 }
-public sealed record ScriptAccount(Guid Id, string Name, string Username)
+public sealed record ScriptAccount(Guid Id, string Name, string Username, bool HasPresident = false)
 {
     public override string ToString() => string.IsNullOrEmpty(Username) ? $"{Name} [{Id.ToString("N")[..6]}]" : $"{Name} · {Username}";
 }

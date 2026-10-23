@@ -26,10 +26,11 @@ public static class AccountDailyPlans
 
     /// <summary>同一方案、同一账号的待选行共用一次选择；同一子方案被重复调用也不重复询问。</summary>
     public static IReadOnlyList<ScriptSaveSelection> RequiredSelections(CompiledScript script)
-        => script.Commands.Where(command => command.SaveNumber == 0 && command.Operation is "日常操作" or "启动存档")
+        => script.Commands.Where(command => command.SaveNumber == 0 && (command.Operation is "日常操作" or "启动存档"
+                || command.Operation == "刷取每日材料" && command.Farming is not null))
             .GroupBy(command => (command.PlanId, command.Account.Id))
             .Select(group => new ScriptSaveSelection(group.Key.PlanId, group.First().Path, group.First().Account,
-                group.Select(command => command.Line).Distinct().ToArray())).ToArray();
+                group.Select(command => command.SaveSelectionLine).Distinct().ToArray())).ToArray();
 
     /// <summary>只替换编译时确定的存档参数，保留注释、绑定与其他行；取消时不会调用此方法。</summary>
     public static ScriptPlan ApplySelection(ScriptPlan plan, ScriptSaveSelection selection, int number)

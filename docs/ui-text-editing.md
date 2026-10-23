@@ -12,8 +12,8 @@
 | 脚本管理按钮、栏标题、窗口提醒 | [ScriptManagerWindow.xaml](../src/BqtjLauncher.Desktop/ScriptManagerWindow.xaml) |
 | 脚本管理的校验、保存、运行提示 | [ScriptManagerWindow.xaml.cs](../src/BqtjLauncher.Desktop/ScriptManagerWindow.xaml.cs) |
 | 首次选档窗口的说明、取消按钮 | [SaveSlotSelectionWindow.xaml](../src/BqtjLauncher.Desktop/SaveSlotSelectionWindow.xaml) |
-| 账号工具标题、显示密码、导入说明 | [AccountTransferWindow.xaml](../src/BqtjLauncher.Desktop/AccountTransferWindow.xaml) |
-| 新增/编辑账号弹窗标签 | [AccountEditorWindow.xaml](../src/BqtjLauncher.Desktop/AccountEditorWindow.xaml) |
+| 账号工具标题、显示密码、有总统列、导入说明 | [AccountTransferWindow.xaml](../src/BqtjLauncher.Desktop/AccountTransferWindow.xaml) |
+| 新增/编辑账号弹窗标签、总统开关及说明 | [AccountEditorWindow.xaml](../src/BqtjLauncher.Desktop/AccountEditorWindow.xaml) |
 | 新安装时生成的官方模板及注释 | [BuiltInScriptPlans.cs](../src/BqtjLauncher.Application/BuiltInScriptPlans.cs) |
 | 新账号自带的日常方案与注释 | [AccountDailyPlans.cs](../src/BqtjLauncher.Application/AccountDailyPlans.cs) |
 

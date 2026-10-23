@@ -216,7 +216,7 @@ public partial class MainWindow : Window
     {
         var selected = _viewModel.SelectedProfile;
         if (selected is null || _viewModel.IsBusy) return;
-        var dialog = new AccountEditorWindow(_accountEditor, selected.Id, selected.DisplayName) { Owner = this };
+        var dialog = new AccountEditorWindow(_accountEditor, selected.Id, selected.DisplayName, selected.HasPresident) { Owner = this };
         var saved = dialog.ShowDialog() == true;
         if (saved || dialog.AccountToolOpened) { await _viewModel.RefreshAsync(selected.Id); await RefreshScriptsAsync(); }
     }

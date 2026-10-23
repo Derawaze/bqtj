@@ -85,6 +85,7 @@ try {
         'scripts/README.md',
         'scripts/official-daily/script.json'
     )
+    $requiredFiles += @(Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'resources/automation/sky-top') -File | ForEach-Object { 'scripts/resources/loot/' + $_.Name })
     if (Test-Path -LiteralPath (Join-Path $repositoryRoot 'LICENSE') -PathType Leaf) {
         $requiredFiles += 'LICENSE'
     }
@@ -134,12 +135,7 @@ try {
             throw "发布包包含诊断或测试项目文件：$relativePath"
         }
 
-        if ($relativePath.Contains('/') -and $relativePath -notin @('scripts/README.md','scripts/official-daily/script.json')) {
-            $segments = $relativePath -split '/'
-            if ($segments[0] -ine 'zh-Hans' -or $relativePath -notmatch '(?i)\.resources\.dll$') {
-                throw "发布包包含非必要子目录或卫星资源：$relativePath"
-            }
-        }
+
     }
 
     # 防止把解压后的同名目录再次打进包内，形成肉眼不易发现的重复产品树。

@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net10.0-windows</TargetFramework>
@@ -18,6 +18,8 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
+    <None Update="Fixtures\sky-top-*.png" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Fixtures\official-completed-header.png" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

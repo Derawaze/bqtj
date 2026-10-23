@@ -11,7 +11,7 @@ try {
     }
     $metadataReader = [IO.StreamReader]::new($zip.GetEntry('components/automation/component.json').Open())
     try { $metadata = $metadataReader.ReadToEnd() | ConvertFrom-Json } finally { $metadataReader.Dispose() }
-    if ($metadata.protocolVersion -ne 2) { throw '组件必须支持协议2的存档黄字识别。' }
+    if ($metadata.protocolVersion -lt 2) { throw '组件至少需要支持协议2的存档黄字识别。' }
     $stream = $zip.GetEntry('components/automation/BqtjScriptVision.exe').Open(); $memory = [IO.MemoryStream]::new()
     try { $stream.CopyTo($memory); $reader = [IO.BinaryReader]::new($memory); $memory.Position = 0x3c; $offset = $reader.ReadInt32(); $memory.Position = $offset + 4; if ($reader.ReadUInt16() -ne 0x8664) { throw '视觉进程不是x64。' } }
     finally { $stream.Dispose(); $memory.Dispose() }

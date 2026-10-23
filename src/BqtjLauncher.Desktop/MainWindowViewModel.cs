@@ -281,6 +281,7 @@ public sealed class ProfileItemViewModel
     {
         Id = profile.Id;
         DisplayName = profile.DisplayName;
+        HasPresident = profile.HasPresident;
         IsRunning = isRunning;
         LastLaunchedDisplay = profile.LastLaunchedAtUtc is null
             ? "尚未启动"
@@ -290,6 +291,8 @@ public sealed class ProfileItemViewModel
     public Guid Id { get; }
 
     public string DisplayName { get; }
+    public bool HasPresident { get; }
+    public string PresidentDisplay => HasPresident ? "有总统（月卡）" : "无总统";
 
     public bool IsRunning { get; }
 

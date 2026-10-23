@@ -3,7 +3,7 @@ using System.Text;
 namespace BqtjLauncher.Application;
 
 /// <summary>批量工具使用的凭据快照；只在工具内处理，不进入日志。</summary>
-public sealed record SavedAccount(Guid Id, string DisplayName, string Username, string Password)
+public sealed record SavedAccount(Guid Id, string DisplayName, string Username, string Password, bool HasPresident = false)
 {
     public override string ToString() => "[账号凭据已隐藏]";
 }
@@ -95,7 +95,7 @@ public sealed class AccountTransferService(IAccountTransferStore store)
     /// <summary>原位编辑复用原子保存与空密码保留规则，返回实际凭据，避免界面误显示空密码。</summary>
     public async Task<SavedAccount> SaveManagedAccountAsync(SavedAccount account)
     {
-        await store.SaveAsync(account.Id, account.DisplayName, account.Username, account.Password, clearCredential: false);
+        await store.SaveAsync(account.Id, account.DisplayName, account.Username, account.Password, clearCredential: false, hasPresident: account.HasPresident);
         var credential = await store.ReadCredentialAsync(account.Id);
         return account with
         {

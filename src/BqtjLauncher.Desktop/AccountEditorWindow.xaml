@@ -7,6 +7,9 @@
     <StackPanel Margin="24">
         <TextBlock Text="账号名称" />
         <TextBox x:Name="DisplayNameInput" MaxLength="40" Margin="0,6,0,16" AutomationProperties.Name="账号名称" />
+        <CheckBox x:Name="PresidentInput" Content="有总统（月卡）" Foreground="{StaticResource TextBrush}" Margin="0,0,0,5" />
+        <TextBlock Text="账号内所有存档共用。刷材料时由游戏自动拾取、拆解；到期后请取消勾选。"
+                   Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap" Margin="0,0,0,16" />
         <TextBlock Text="4399账号" />
         <TextBox x:Name="UsernameInput" MaxLength="256" Margin="0,6,0,16" AutomationProperties.Name="4399账号" />
         <TextBlock Text="密码" />

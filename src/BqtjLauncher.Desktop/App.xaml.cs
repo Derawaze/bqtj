@@ -116,7 +116,10 @@ public partial class App : System.Windows.Application
                 return files;
             });
             services.AddSingleton<IScriptVision>(_ => new SharedScriptVision(Path.Combine(AppContext.BaseDirectory, "components", "automation")));
-            services.AddSingleton<IScriptExecutor, OfficialScriptExecutor>();
+            services.AddSingleton(_ => new ScriptRunLog(Path.Combine(localData, "logs"),
+                System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(typeof(App).Assembly)?.InformationalVersion ?? "unknown"));
+            services.AddSingleton<IScriptExecutor>(provider => new OfficialScriptExecutor(provider.GetRequiredService<IScriptVision>(),
+                trace: provider.GetRequiredService<ScriptRunLog>().Write));
             services.AddSingleton(provider => new ScriptWorkspace(provider.GetRequiredService<ScriptFileStore>(),
                 provider.GetRequiredService<IScriptAccounts>(),
                 new ScriptCoordinator(provider.GetRequiredService<LauncherModule>(), provider.GetRequiredService<IScriptExecutor>())));

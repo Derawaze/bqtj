@@ -99,6 +99,14 @@ public sealed class DailyScriptCompletionGate
 
     private DailyScriptCompletionResult Result() => new(_runId, _state, _hasFailedItems);
 
+    /// <summary>只由同一运行的进度观察器在验证“未完成→更大进度”后调用；静态N/N不能调用此入口。</summary>
+    internal void ConfirmObservedProgressAdvance()
+    {
+        if (_started) return;
+        _started = true;
+        _state = DailyScriptCompletionState.Running;
+    }
+
     private void ResetCompletionConfirmation()
     {
         _firstCompletionCapture = null;

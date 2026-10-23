@@ -24,6 +24,8 @@ dotnet test BqtjLauncher.sln --configuration Release
 | 尺寸/加载/音频 | 相关逻辑或原生探针，再检查实际游戏窗口 |
 | 打包/公共运行链 | 全量测试、x86构建、ZIP验证及从发布目录启动 |
 
+总统权益由game_profiles.has_president保存，旧库初始化时同事务补列，默认关闭。新增/编辑账号和独立账号工具均可修改，三字段TXT导入不覆盖已有权益，启动时间回写也不覆盖；运行快照读取账号权益，修改下次新运行生效。验证用AccountEditorTests、ScriptProgramTests、DailyMaterialFarmingTests和OfficialScriptExecutorTests，界面用Test-AccountManager及Test-ScriptManagement；真实总统自动拾取仍需手动验收，操作差异见[材料刷取](sky-top-materials.md)。
+
 回归源：LoginAutofillProbe.c、CredentialPipeProbe.c、ViewportProbe.c、StartupZoomProbe.c、LoadingZoomProbe.c、AddressSpaceProbe.c、NativeCommandPipeProbe.c、NativeCookieSessionProbe。
 原因和验证入口见 [回归要点](regressions.md) 与 [诊断索引](README.md)。LiveLoginAutofillProbe使用虚构值，默认不提交网络登录。不要把启动成功代替具体行为验收。
 原生宿主每次改动都要重编译；本机没有32位MinGW-w64时不得把“C#测试通过”当作原生已验证。
@@ -64,10 +66,18 @@ NativeCookieSessionProbe按stage/ready协议等待启动，测试本地HTTP与�
 
 ./tools/Build-ScriptComponent.ps1 -Compiler64Path <x64-g++路径> 只输出artifacts/dev/components/automation；默认使用本机x64 v14运行库，可通过 -VcRuntimeDirectory 指向Visual Studio Redist目录。组件独立于x86主程序，不携带另一份.NET；CPU推理仅交付必需动态库、中文模型和许可证。
 
-完整主程序开发ZIP使用原Publish-Release.ps1 -Development命令；独立组件使用 ./tools/Publish-ScriptComponent.ps1 -Version 0.0.0-dev.<UTC时间戳> -Compiler64Path <x64-g++路径>。组件ZIP直接解压到主程序目录，得到components/automation，不带版本外层。存档名指令要求protocolVersion=2，已有协议2组件可沿用；仅UI/方案存储变化无需重打组件。开始识别前拒绝旧协议并提示更新。覆盖更新保留scripts/plans、config、catalog和用户脚本，默认脚本资源随主包交付；完整及覆盖包清单都明确校验默认资源，组件另检x64及SHA256。
+完整主程序开发ZIP使用原Publish-Release.ps1 -Development命令；独立组件使用 ./tools/Publish-ScriptComponent.ps1 -Version 0.0.0-dev.<UTC时间戳> -Compiler64Path <x64-g++路径>。组件ZIP直接解压到主程序目录，得到components/automation，不带版本外层。存档名要求protocolVersion=2，已有协议2组件可沿用；刷材料要求协议7，新增同帧蓝/绿色小计数识别，并包含后台悬停、WASD斜向短按、具名N键AI切换及同帧多目标识图。普通移动接口仍不允许N，取消须等待松键；开始刷材料前拒绝旧组件。覆盖更新保留scripts/plans、config、catalog和用户脚本，默认资源随主包交付；完整及覆盖包清单校验默认资源，组件另检x64及SHA256。
 
 ScriptManagementTests覆盖配置、排序、并发、已有窗口等待、关窗时机、失败隔离、取消/恢复倍率、2倍速扫描及失败后恢复；ScriptProgramTests验证中文CSV/全局默认常量及本方案覆盖、头部声明与调用权限、引用更新、顺序/并行、同次窗口复用、失败和停止、普通窗口接管及指定档切换、跨运行复用与控制互斥。AccountDailyPlanTests验证默认日常按账号ID初始化、删除不重建、首次选档回写、子方案重复调用及模板v2迁移；真实WPF探针另验证2×4选档布局、首次自动读名、取消保留扫描窗口及名称且不改写方案、全部子方案确认后回写、下次免询问和复制不占默认入口。编辑/监控模式在右下角分别显示插入/停止，账号工具默认隐藏密码列并可勾选显示编辑。真实WPF探针验证统一可编辑内置模板、双击插入/编辑、错误语句及常量原文保存而不执行、头部面板可见性、空行/非空行插入、保存确认的三种选择、全局常量保存、名称校正、改名同步、保存切换监控、隐藏不停止及默认/最小布局。ScriptProgramTests另覆盖模板一次初始化和编辑/删除后不重置，以及旧文档默认可见。SaveSlotNameReaderTests覆盖数字名称、等级后缀、对比度选择及旧协议拒绝；OfficialScriptExecutorTests用合成菜单与像素覆盖标题先于卡片出现时的等待/取消且不重发点击、八档映射、真正的日常流程、标题整体完成绿勾观察（末行不在视口内）及退出确认。OfficialCompletionVisionTests排除其他行勾、红勾、斜线、叉号和纯色块。Domain完成判断回归覆盖旧画面、证据过期、进度变化与持续3秒。实际OCR另用用户授权的保留选档画面作只读比对，不能外推其他字体、等级或全部场景。真实Flash后台兼容、跨屏DPI及两个账号连续多档仍由开发包人工验收，不以合成结果代替。
 只读现场回放：先在用户授权的游戏侧栏截图与对应Maa OCR JSON上运行 dotnet run --project native/Diagnostics/ScriptCompletionProbe/ScriptCompletionProbe.csproj -- <侧栏PNG> <OCR-JSON>。它只读取这两个文件并报告标题绿勾，不发送点击；静态截图没有本次进度增长证据，不能用它触发关窗。
+
+FarmingSceneProbe的`--system`只读采样执行器实际使用的系统面板区域（90,20,760,510），保存局部截图及OCR坐标；`--daily`按日常侧栏原区域连续采样四帧。局部OCR必须按真实ROI复测，不能用全图结果或合成文字代替。日常后接刷关另有过渡空帧、系统面板、官方侧栏遮挡地图和侧栏收起延迟的执行器回归，实际后台点击仍须用开发包验证。
+
+`--mode`只读采样正常/挑战菜单的实际ROI（260,140,440,140）。正常模式卡住时先比对这个区域，再查脚本日志；识别成功和原生点击回执都不能单独证明难度页已出现。
+
+`--save-title`先纯截图，再对同一快照按选档标题ROI（240,135,480,65）识字，分别报告截图与识别结果；保存局部PNG/OCR，不点击读取存档。用于首次观察失败时区分截图和OCR，空白区域应正常返回空结果。脚本日志的initial-observation-retry表示首次尚未取得画面时的一次本窗口重连；新组件将原生失败分为controller-connect、capture、recognition，仍不记录任意OCR正文。
+
+脚本日志由ScriptRunLog写入`%LOCALAPPDATA%/BqtjLauncher/logs/script-日期.jsonl`，每行独立JSON，按天及2MiB滚动，最多7份。只记录版本、运行/会话随机编号、固定菜单词/坐标/置信度、快照编号/年龄、点击发送与回执、等待/超时及错误类型，不记录账号、方案原文、未知OCR或截图。相同观察每5秒留一次、变化立即记录；目标不可用只记进入与恢复。用户授权后可以直接读取该脚本日志，其他生产数据读取限制不变；当前“导出诊断包”仍只导出通用日志白名单摘要，不自动打包这些JSON日志。
 
 选档名称只读探针：构建native/Diagnostics/SaveNameProbe后，传入明确的容器PID、原生宿主PID、artifacts/dev/probes下的输出目录及组件目录。它只使用定向Flash后台截图，保存选档卡片区域及OCR对比，不发送点击、不激活/调整窗口；只在用户授权时运行，不读取账号库或生产日志。真实角色名称证据留在忽略目录，不加入源码或交付。管理页检查继续只用虚构账号。
 
@@ -105,6 +115,13 @@ dotnet restore src/BqtjLauncher.Desktop/BqtjLauncher.Desktop.csproj -r win-x86 -
 
 用户要求清理旧包时，单独核对过期版本及其 ZIP、SHA256、解压目录与验收记录，再按仓库内绝对路径删除；保留当前验收包及最新正式交付包。隔离方案原型、旧固定游戏地址 UI 脚本及第三方变速 DLL 探针已退出当前工具集，历史原因留在技术决策与回归文档；不要恢复这些入口代替现有验证。
 
+## CI与提交前检查
+
+CI在main、dev及codex/*分支推送、PR和手动触发时运行。所有改动先在Linux检查Git清单和Markdown相对链接，拒绝生成包、账号库、日志及密钥进入源码。只有产品源码、测试、原生代码、非文档资源/工具或构建配置变化才进入Windows验证；纯文档不安装.NET、MinGW或视觉依赖。工作流变动另跑actionlint，手动运行强制完整验证。
+
+Windows仍串行执行格式、全量.NET测试、命令恢复、账号/脚本窗口及视觉夹具，再生成开发ZIP。NuGet包和固定Maa/OCR依赖分别缓存，运行会话、用户配置和现场不缓存。重复推送取消旧运行；开发包保留7天，正式发布门槛不变。
+
+本地提交前运行 `./tools/Test-Repository.ps1 -FullVerification`、`dotnet format BqtjLauncher.sln --verify-no-changes --no-restore`，再按改动范围选择上方检查。仓库检查只处理Git清单，因此新增源码和文档先暂存再检查，提交前重新查看暂存范围；不要暂存整个运行目录。
 ## 远程交付
 
 本地ZIP生成与公开发布是不同操作。只有用户要求公开时，才处理许可证、提交范围和远程推送；不为普通本地开发添加发布审批。
@@ -132,3 +149,11 @@ Flash进程内存不受.NET垃圾回收管理。重启单个账号容器可以�
 摘要只保留时间、级别、固定事件、错误类型和有限数值，不原样复制异常正文、URL、账号信息或完整日志，不读取账号库或 Cookie，不自动上传。反馈应附版本、操作步骤和发生时间，必要时用户自行提交诊断包；不得上传整个用户数据目录。
 
 原始日志位于 `%LOCALAPPDATA%/BqtjLauncher/logs`，按天或 5MiB 滚动，最多保留 7 个文件；面板与容器使用共享写入。摘要会舍弃部分细节，不能视为完整转储。诊断导出回归仅使用临时虚构日志，agent 不打开或导出用户真实日志作为测试材料。
+
+DailyMaterialQuotaTests覆盖宝石共享别名（含实机守护宝石独立无计数行）与冥王图鉴双上限、缺项/冲突/歧义计数和绿色证据；DailyMaterialFarmingTests用受控适配器验证第10轮起检查、固定次数、拾取失败不重玩和停止保留。ScriptProgramTests覆盖短式/显式语句、串行上下文和继承选档回写。真实WPF探针验证刷关表单默认值及未校准能力在任何游戏操作前拒绝。SkyTopSceneVisionTests覆盖HUD连写、唯一角色、箭头形状及青色/绿色区别；FarmingSceneProbe可对授权950×600现场只读采集，或用--offline <PNG> <OCR-JSON>回放。协议4夹具还检查W+D同时按下、双键释放、非法相反方向拒绝及取消后可继续识别。SkyTopSceneVisionTests用纯图标夹具回放装备/武器品质光效、三个相邻枪械、材料/宝箱及副手/装置分类；整幅用户截图不入库。FarmingSceneProbe的--offline会输出分类标注图和本次扫描耗时，只观察、不操作游戏。上述检查不外推未覆盖的天气、关卡或账号；天空顶已由用户确认为初代可用，剩余实机范围见[材料刷取](sky-top-materials.md)。
+
+独立脚本资源包使用`./tools/Publish-ScriptResources.ps1 -Version 0.0.0-dev.<UTC时间戳>`，ZIP根scripts，只包含源码中的官方JSON、说明和resources/loot图标规则。适用于已支持外置图标的本轮开发主程序；不能给v0.1.5补出新引擎。覆盖更新回归可再传`-ScriptArchivePath <脚本包ZIP>`，同时验证资源替换和用户方案保留。视觉组件仍单独发布，ZIP根components/automation。
+
+FarmingSceneProbe的`--motion <前帧PNG> <后帧PNG>`只读回放前景配准数值，不输出角色名。无交互桌面、窗口关闭或PID不匹配时返回诊断失败，不抛出未处理异常触发Windows弹窗；此工具不进入发行包。拾取的CaptureAsync复用协议4已有pixels新快照，托管桥接夹具覆盖编号、时间和完整像素，不调用OCR。
+
+`--scores <PNG> <x> <y> <宽> <高>`只读比较指定区域内冷冻宝石、守护宝石、图鉴各模板的最高相关度和锚点误差，区分模板样式缺失与锚点筛选失败；不调整阈值、不操作游戏。小雨回归使用匿名12帧掉落堆和同场背景裁剪，误拾取回归保留匿名蓝色装置、出口光效及角色喷焰；大雨需要另有现场验证。

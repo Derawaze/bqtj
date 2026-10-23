@@ -4,11 +4,11 @@ using Microsoft.Data.Sqlite;
 
 namespace BqtjLauncher.Infrastructure;
 
-/// <summary>按用户选择明文保存凭据，名称与凭据同事务提交，不覆盖最近启动时间。</summary>
+/// <summary>按用户选择明文保存凭据，名称、总统权益与凭据同事务提交，不覆盖最近启动时间。</summary>
 public sealed partial class SqliteGameProfileRepository
 {
     /// <summary>新增和凭据写入同事务，取消表单或写入失败不留下半条账号记录。</summary>
-    public async Task<Guid> CreateAsync(string displayName, string username, string password)
+    public async Task<Guid> CreateAsync(string displayName, string username, string password, bool hasPresident = false)
     {
         var profile = GameProfile.Create(displayName, DateTimeOffset.UtcNow);
         username = username.Trim();
@@ -19,9 +19,10 @@ public sealed partial class SqliteGameProfileRepository
         if (username.Length != 0) await EnsureUniqueUsernameAsync(connection, transaction, username, profile.Id);
         using var command = connection.CreateCommand();
         command.Transaction = transaction;
-        command.CommandText = "INSERT INTO game_profiles(id,display_name,browser_profile_name,created_utc) VALUES($id,$name,$browser,$created)";
+        command.CommandText = "INSERT INTO game_profiles(id,display_name,browser_profile_name,created_utc,has_president) VALUES($id,$name,$browser,$created,$hasPresident)";
         command.Parameters.AddWithValue("$id", profile.Id.ToString("D"));
         command.Parameters.AddWithValue("$name", profile.DisplayName);
+        command.Parameters.AddWithValue("$hasPresident", hasPresident ? 1 : 0);
         command.Parameters.AddWithValue("$browser", profile.BrowserProfileName);
         command.Parameters.AddWithValue("$created", profile.CreatedAtUtc.ToString("O", System.Globalization.CultureInfo.InvariantCulture));
         await command.ExecuteNonQueryAsync();
@@ -53,7 +54,7 @@ public sealed partial class SqliteGameProfileRepository
     }
 
     /// <summary>同事务编辑名称与唯一账号；空密码沿用原值，显式清除才删除凭据。</summary>
-    public async Task SaveAsync(Guid accountId, string displayName, string username, string replacementPassword, bool clearCredential)
+    public async Task SaveAsync(Guid accountId, string displayName, string username, string replacementPassword, bool clearCredential, bool? hasPresident = null)
     {
         var normalizedName = GameProfile.Create(displayName, DateTimeOffset.UtcNow).DisplayName;
         username = username.Trim();
@@ -63,9 +64,10 @@ public sealed partial class SqliteGameProfileRepository
         using var transaction = connection.BeginTransaction();
         await using var command = connection.CreateCommand();
         command.Transaction = transaction;
-        command.CommandText = "UPDATE game_profiles SET display_name = $name WHERE id = $id";
+        command.CommandText = "UPDATE game_profiles SET display_name = $name, has_president = COALESCE($hasPresident, has_president) WHERE id = $id";
         command.Parameters.AddWithValue("$id", accountId.ToString("D"));
         command.Parameters.AddWithValue("$name", normalizedName);
+        command.Parameters.AddWithValue("$hasPresident", hasPresident is { } enabled ? enabled ? 1 : 0 : DBNull.Value);
         if (await command.ExecuteNonQueryAsync() != 1) throw new ProfileNotFoundException(accountId);
         if (clearCredential)
         {

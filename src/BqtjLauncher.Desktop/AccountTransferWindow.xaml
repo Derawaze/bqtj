@@ -102,6 +102,15 @@
                                                 Width="*" MinWidth="95" EditingElementStyle="{StaticResource AccountEditStyle}" />
                             <DataGridTextColumn x:Name="PasswordColumn" Visibility="Collapsed" Header="密码" Binding="{Binding Password, UpdateSourceTrigger=Explicit}" SortMemberPath="Password"
                                                 Width="*" MinWidth="95" EditingElementStyle="{StaticResource AccountEditStyle}" />
+                            <DataGridTemplateColumn Header="有总统" Width="65" IsReadOnly="True" SortMemberPath="HasPresident">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <CheckBox IsChecked="{Binding HasPresident, Mode=OneWay}" Click="President_Click"
+                                                  HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                  ToolTip="账号所有存档共用；勾选后刷关使用游戏自动拾取和拆解" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
                         </DataGrid.Columns>
                     </DataGrid>
                     <TextBlock Grid.Row="4" Text="双击或右键单元格编辑，Enter 保存，Esc 取消；Ctrl / Shift 多选。"

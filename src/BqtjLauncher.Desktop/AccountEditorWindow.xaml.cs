@@ -4,7 +4,7 @@ using BqtjLauncher.Application;
 
 namespace BqtjLauncher.Desktop;
 
-/// <summary>固定账号的凭据编辑窗口，默认掩码，用户可切换可见密码，取消不写入。</summary>
+/// <summary>固定账号的名称、总统权益及凭据编辑窗口，密码默认掩码，用户可切换可见密码，取消不写入。</summary>
 public partial class AccountEditorWindow : Window
 {
     private readonly IAccountEditor _editor;
@@ -13,12 +13,13 @@ public partial class AccountEditorWindow : Window
     public Guid SavedAccountId { get; private set; }
     public bool AccountToolOpened { get; private set; }
 
-    public AccountEditorWindow(IAccountEditor editor, Guid accountId, string displayName)
+    public AccountEditorWindow(IAccountEditor editor, Guid accountId, string displayName, bool hasPresident = false)
     {
         InitializeComponent();
         _editor = editor;
         _accountId = accountId;
         SavedAccountId = accountId;
+        PresidentInput.IsChecked = hasPresident;
         PasswordHint.Text = "自动登录时请同时填写4399账号和密码；两项同时留空，可在游戏中手动登录。";
         if (accountId == Guid.Empty)
         {
@@ -80,9 +81,9 @@ public partial class AccountEditorWindow : Window
         {
             var password = ShowPasswordInput.IsChecked == true ? VisiblePasswordInput.Text : PasswordInput.Password;
             if (_accountId == Guid.Empty)
-                SavedAccountId = await _editor.CreateAsync(DisplayNameInput.Text, UsernameInput.Text, password);
+                SavedAccountId = await _editor.CreateAsync(DisplayNameInput.Text, UsernameInput.Text, password, PresidentInput.IsChecked == true);
             else
-                await _editor.SaveAsync(_accountId, DisplayNameInput.Text, UsernameInput.Text, password, ClearInput.IsChecked == true);
+                await _editor.SaveAsync(_accountId, DisplayNameInput.Text, UsernameInput.Text, password, ClearInput.IsChecked == true, PresidentInput.IsChecked == true);
             _saving = false;
             DialogResult = true;
         }

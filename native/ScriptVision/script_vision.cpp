@@ -47,12 +47,13 @@ static std::vector<unsigned char> unhex(const std::string& text) {
     for (size_t i = 0; i < result.size(); ++i) result[i] = (unsigned char)(digit(text[i * 2]) * 16 + digit(text[i * 2 + 1]));
     return result;
 }
-template<class Status> static void wait_done(Status status) {
+// 异步状态失败保留所属阶段，不能把连接、截图、识别统一抹成vision。
+template<class Status> static void wait_done(Status status, const char* failure) {
     auto start = GetTickCount64();
     for (;;) {
         auto state = status();
         if (state == MaaStatus_Succeeded) return;
-        if (state != MaaStatus_Pending && state != MaaStatus_Running) throw std::runtime_error("vision");
+        if (state != MaaStatus_Pending && state != MaaStatus_Running) throw std::runtime_error(failure);
         if (GetTickCount64() - start > 8000) throw std::runtime_error("vision-timeout");
         Sleep(20);
     }
@@ -69,6 +70,9 @@ struct Target {
     DWORD pid = 0, container = 0;
     MaaController* controller = nullptr;
     long long snapshot = 0, captured = 0;
+    // 仅在紧随悬停的新截图期间续发本窗口消息；短租期结束或其他输入立即清除，不占用系统鼠标。
+    POINT hover = {};
+    ULONGLONG hover_until = 0;
 };
 /* 所有输入前都核对Flash子窗口及容器归属；不可见时由上层暂停，不让Maa恢复最小化窗口。 */
 static void validate(HWND window, DWORD pid, DWORD container, bool visible = true) {
@@ -85,11 +89,19 @@ static void validate(HWND window, DWORD pid, DWORD container, bool visible = tru
     if (!GetClientRect(window, &rect) || rect.right != 950 || rect.bottom != 600) throw std::runtime_error("target-size");
 }
 
+/* Flash可能在真实鼠标离开时收起弹层；截图前及异步截图等待中维持刚请求的后台悬停。 */
+static void refresh_hover(HWND window, Target& target) {
+    if (GetTickCount64() >= target.hover_until) return;
+    DWORD_PTR result;
+    if (!SendMessageTimeoutW(window, WM_MOUSEMOVE, 0, MAKELPARAM(target.hover.x, target.hover.y),
+        SMTO_ABORTIFHUNG | SMTO_BLOCK, 1000, &result)) throw std::runtime_error("input-uncertain");
+}
+
 static std::string recognize(MaaResource* resource, MaaTasker* tasker, Image& image, const char* algorithm, const std::string& params) {
     api.MaaTaskerClearCache(tasker);
     auto id = api.MaaTaskerPostRecognition(tasker, algorithm, params.c_str(), image.value);
     if (!id) throw std::runtime_error("recognition");
-    wait_done([&] { return api.MaaTaskerStatus(tasker, id); });
+    wait_done([&] { return api.MaaTaskerStatus(tasker, id); }, "recognition");
     Text entry, name, detail;
     MaaNodeId nodes[16]; MaaSize count = 16; MaaStatus status;
     MaaRecoId reco; MaaActId action; MaaBool completed, hit; MaaRect box;
@@ -134,7 +146,7 @@ int wmain(int argc, wchar_t** argv) {
         if (!api.MaaResourceSetOption(resource, MaaResOption_InferenceExecutionProvider, &provider, sizeof(provider))) throw std::runtime_error("component-cpu");
         auto bundle = utf8(root + L"\\ppocr-v4-zh-cn");
         auto load = api.MaaResourcePostBundle(resource, bundle.c_str());
-        wait_done([&] { return api.MaaResourceStatus(resource, load); });
+        wait_done([&] { return api.MaaResourceStatus(resource, load); }, "component");
         std::cout << "ready\n" << std::flush;
         std::string line;
         while (std::getline(std::cin, line)) {
@@ -152,7 +164,40 @@ int wmain(int argc, wchar_t** argv) {
                     continue;
                 }
                 validate(window, pid, container);
-                if (operation == "click") {
+                if (operation == "key" || operation == "keys" || operation == "battle-ai" || operation == "battle-ai-rise") {
+                    if (auto found = targets.find(window); found != targets.end()) found->second.hover_until = 0;
+                    // N仅属于具名AI开关，不扩大通用走位接口的按键范围。
+                    bool battle_ai = operation == "battle-ai";
+                    bool rising = operation == "battle-ai-rise";
+                    if ((rising ? x != 'N' || y != 'W' || width < 50 : battle_ai ? x != 'N' || y != 0 || width != 50 : x != 'W' && x != 'A' && x != 'S' && x != 'D')
+                        || width < 1 || width > 500) throw std::runtime_error("coordinates");
+                    bool diagonal = operation == "keys";
+                    if (diagonal && !(((x == 'W' || x == 'S') && (y == 'A' || y == 'D')) ||
+                        ((x == 'A' || x == 'D') && (y == 'W' || y == 'S')))) throw std::runtime_error("coordinates");
+                    int keys[2] = {x, y}, count = diagonal || rising ? 2 : 1; DWORD_PTR result;
+                    bool held[2] = {false, false};
+                    auto send_key = [&](int key, bool up) {
+                        auto scan = MapVirtualKeyW((UINT)key, MAPVK_VK_TO_VSC);
+                        LPARAM flags = 1 | (scan << 16);
+                        if (up) flags |= (1LL << 30) | (1LL << 31);
+                        return SendMessageTimeoutW(window, up ? WM_KEYUP : WM_KEYDOWN, (WPARAM)key, flags,
+                            SMTO_ABORTIFHUNG | SMTO_BLOCK, 200, &result) != 0;
+                    };
+                    // 任一按下/校验失败也释放两键，不能因第二键失败留下第一键持续移动。
+                    auto release_one = [&](int i) { if (!held[i]) return true; if (!send_key(keys[i], true)) return false; held[i] = false; return true; };
+                    auto release = [&] { bool ok = true; for (int i = count - 1; i >= 0; --i) if (!release_one(i)) ok = false; return ok; };
+                    try {
+                        for (int i = 0; i < count; ++i) { held[i] = true; if (!send_key(keys[i], false)) throw std::runtime_error("input-uncertain"); }
+                        // N和W一起按下，50ms先释放N，剩余时间继续上升；最后统一保证所有键已松开。
+                        if (rising) { Sleep(50); if (!release_one(0)) throw std::runtime_error("input-uncertain"); Sleep((DWORD)(width - 50)); }
+                        else Sleep((DWORD)width);
+                        validate(window, pid, container, false);
+                    } catch (...) { release(); throw; }
+                    if (!release()) throw std::runtime_error("input-uncertain");
+                    std::cout << "reply " << id << " ok 0 7B7D\n" << std::flush;
+                    continue;
+                }
+                if (operation == "click" || operation == "hover") {
                     if (x < 0 || y < 0 || x >= 950 || y >= 600) throw std::runtime_error("coordinates");
                     LPARAM coordinates = MAKELPARAM(x, y); DWORD_PTR result;
                     auto send = [&](UINT message, WPARAM buttons) {
@@ -160,6 +205,13 @@ int wmain(int argc, wchar_t** argv) {
                             throw std::runtime_error("input-uncertain");
                     };
                     send(WM_MOUSEMOVE, 0);
+                    if (operation == "hover") {
+                        auto& target = targets[window];
+                        target.hover = {x, y}; target.hover_until = GetTickCount64() + 1000;
+                        std::cout << "reply " << id << " ok 0 7B7D\n" << std::flush;
+                        continue;
+                    }
+                    if (auto found = targets.find(window); found != targets.end()) found->second.hover_until = 0;
                     try { send(WM_LBUTTONDOWN, MK_LBUTTON); Sleep(50); }
                     catch (...) { validate(window, pid, container, false); SendMessageTimeoutW(window, WM_LBUTTONUP, 0, coordinates, SMTO_ABORTIFHUNG | SMTO_BLOCK, 1000, &result); throw; }
                     validate(window, pid, container, false);
@@ -176,12 +228,13 @@ int wmain(int argc, wchar_t** argv) {
                     if (!target.controller || !api.MaaControllerSetOption(target.controller, (MaaCtrlOption)3, &raw, 1))
                         throw std::runtime_error("capture");
                     auto connect = api.MaaControllerPostConnection(target.controller);
-                    wait_done([&] { return api.MaaControllerStatus(target.controller, connect); });
+                    wait_done([&] { return api.MaaControllerStatus(target.controller, connect); }, "controller-connect");
                 }
                 if (target.pid != pid || target.container != container) throw std::runtime_error("target-changed");
                 if (!snapshot) {
+                    refresh_hover(window, target);
                     auto capture = api.MaaControllerPostScreencap(target.controller);
-                    wait_done([&] { return api.MaaControllerStatus(target.controller, capture); });
+                    wait_done([&] { refresh_hover(window, target); return api.MaaControllerStatus(target.controller, capture); }, "capture");
                     target.snapshot = id; target.captured = timestamp();
                 } else if (snapshot != target.snapshot) throw std::runtime_error("snapshot");
                 validate(window, pid, container);
@@ -197,13 +250,14 @@ int wmain(int argc, wchar_t** argv) {
                 if (operation == "pixels") extra = hex(pixels.data(), pixels.size());
                 else {
                     Image crop;
-                    if (operation == "green" || operation == "save-name") {
+                    if (operation == "green" || operation == "save-name" || operation == "quota-counter") {
                         const int mask_scale = operation == "save-name" ? 1 : 3;
                         std::vector<unsigned char> mask(width * height * 3 * mask_scale * mask_scale, 255);
                         for (int py = 0; py < height; ++py) for (int px = 0; px < width; ++px) {
                             auto p = &pixels[(py * width + px) * 3];
                             // 存档名/等级为黄色，通关标记和时间为灰色；去背景后3倍插值放大，保留小字号笔画。
-                            bool foreground = operation == "save-name"
+                            // 计数已裁到名称右侧小区域，保留白色括号/斜杠及蓝、绿数字，统一黑字白底。
+                            bool foreground = operation == "quota-counter" ? std::max({p[0], p[1], p[2]}) >= 100 : operation == "save-name"
                                 ? p[2] >= 60 && p[1] >= 60 && p[2] - p[0] >= 30 && p[1] - p[0] >= 30
                                 : p[1] >= 70 && p[1] - p[2] >= 40 && p[1] - p[0] >= 35;
                             if (!foreground) continue;
@@ -222,16 +276,25 @@ int wmain(int argc, wchar_t** argv) {
                             auto dark = recognize(resource, tasker, crop, "OCR", "{\"threshold\":0.6,\"order_by\":\"Horizontal\"}");
                             detail = "{\"light\":" + light + ",\"dark\":" + dark + "}";
                         } else {
-                            detail = recognize(resource, tasker, crop, "OCR", "{\"threshold\":0.85,\"order_by\":\"Vertical\"}");
+                            detail = recognize(resource, tasker, crop, "OCR", operation == "quota-counter"
+                                ? "{\"threshold\":0.6,\"order_by\":\"Horizontal\"}"
+                                : "{\"threshold\":0.85,\"order_by\":\"Vertical\"}");
                         }
                     } else {
                         api.MaaImageBufferSetRawData(crop.value, pixels.data(), width, height, 16);
-                        if (operation == "image") {
+                        if (operation == "image" || operation == "feature-image") {
                             std::string encoded; input >> encoded;
                             auto bytes = unhex(encoded); Image pattern;
-                            if (!api.MaaImageBufferSetEncoded(pattern.value, bytes.data(), bytes.size()) ||
-                                !api.MaaResourceOverrideImage(resource, "script-template.png", pattern.value)) throw std::runtime_error("image");
-                            detail = recognize(resource, tasker, crop, "TemplateMatch", "{\"template\":[\"script-template.png\"],\"threshold\":[0.9],\"method\":5}");
+                            if (!api.MaaImageBufferSetEncoded(pattern.value, bytes.data(), bytes.size())) throw std::runtime_error("image");
+                            // 小物品先同倍率放大，再提取旋转/缩放不变特征；不降低普通模板的匹配门槛。
+                            if (operation == "feature-image") {
+                                api.MaaImageBufferResize(pattern.value, api.MaaImageBufferWidth(pattern.value) * 3, api.MaaImageBufferHeight(pattern.value) * 3);
+                                api.MaaImageBufferResize(crop.value, width * 3, height * 3);
+                            }
+                            if (!api.MaaResourceOverrideImage(resource, "script-template.png", pattern.value)) throw std::runtime_error("image");
+                            detail = operation == "feature-image"
+                                ? recognize(resource, tasker, crop, "FeatureMatch", "{\"template\":[\"script-template.png\"],\"count\":4,\"detector\":\"SIFT\",\"ratio\":0.6}")
+                                : recognize(resource, tasker, crop, "TemplateMatch", "{\"template\":[\"script-template.png\"],\"threshold\":[0.9],\"method\":5}");
                         } else if (operation == "ocr" || operation == "ocr2") {
                             if (operation == "ocr2") api.MaaImageBufferResize(crop.value, width * 2, height * 2);
                             // 名称行已经过颜色/位置隔离；适当降低小字号置信阈值，避免仅保留等级而丢弃中文名字。

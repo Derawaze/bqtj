@@ -62,6 +62,9 @@ internal static class Program
             var frame = await vision.ReadAsync(target, new(240, 130, 480, 80), default);
             Require(frame.Text.Any(line => line.Text.Contains("读取存档", StringComparison.Ordinal)), "托管OCR协议");
             var pixels = await vision.PixelsAsync(target, new(400, 250, 40, 40), frame.SnapshotId, default);
+            var scene = await vision.CaptureAsync(target, default);
+            Require(scene.Frame.SnapshotId != frame.SnapshotId && scene.Frame.CapturedAt >= frame.CapturedAt
+                && scene.Frame.Text.Count == 0 && scene.Pixels.Bgr.Length == 950 * 600 * 3, "纯像素观察产生新快照及时间，不启动OCR");
             using var memory = new MemoryStream();
             using (var writer = new BinaryWriter(memory, System.Text.Encoding.UTF8, true))
             {
@@ -72,6 +75,28 @@ internal static class Program
             var box = await vision.FindImageAsync(target, new(380, 230, 90, 90), memory.ToArray(), default);
             Require(box is { X: 400, Y: 250, Width: 40, Height: 40 }, "托管模板结果坐标");
             await vision.ClickAsync(target, 410, 260, default);
+            await vision.MovePointerAsync(target, 150, 480, default);
+            using (var stop = new CancellationTokenSource(TimeSpan.FromMilliseconds(40)))
+            {
+                try { await vision.HoldKeysAsync(target, 'w', 'd', 150, stop.Token); throw new InvalidOperationException("组合按键取消应传播"); }
+                catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
+            }
+            Require((await vision.ReadAsync(target, new(240, 130, 480, 80), default)).Text.Count > 0, "按键取消等释放回执，不杀仍被租用的视觉进程");
+            Require(vision.SupportsBattleAi, "协议5提供具名AI开关");
+            using (var stop = new CancellationTokenSource(TimeSpan.FromMilliseconds(10)))
+            {
+                try { await vision.ToggleBattleAiAsync(target, stop.Token); throw new InvalidOperationException("AI切换取消应传播"); }
+                catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
+            }
+            Require((await vision.ReadAsync(target, new(240, 130, 480, 80), default)).Text.Count > 0, "AI切换取消仍等待松键回执");
+            Require(vision.SupportsBattleAiRise, "协议6提供N与W同步输入");
+            Require(vision.SupportsQuotaCounter, "协议7提供同帧蓝色和绿色限额计数");
+            using (var stop = new CancellationTokenSource(TimeSpan.FromMilliseconds(30)))
+            {
+                try { await vision.ToggleBattleAiAndRiseAsync(target, 180, stop.Token); throw new InvalidOperationException("同步上升取消应传播"); }
+                catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
+            }
+            Require((await vision.ReadAsync(target, new(240, 130, 480, 80), default)).Text.Count > 0, "N/W取消等待两键释放后视觉进程仍可使用");
             await vision.EndAsync();
             Require((await vision.ReadAsync(target, new(240, 130, 480, 80), default)).Text.Count > 0, "共享租用未提前退出");
             await vision.ReleaseTargetAsync(target); await vision.EndAsync();
@@ -120,9 +145,30 @@ internal static class Program
         var commands = Get<ListBox>(window, "CommandsList");
         commands.SelectedItem = "日常操作";
         await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
+        Require(Get<StackPanel>(window, "DailyParameters").IsVisible, "日常显示可选游戏内脚本名称");
+        Get<TextBox>(window, "OfficialDailyName").Text = "我的日常";
+        SetSource(editor, ""); Click(window, "插入语句");
+        Require(ScriptSyntax.Parse(Source(editor)).Single().Words[3] == "我的日常", "自定义名称作为第四参数插入");
+        Save(window, Path.Combine(output, "daily-name-editor.png"));
+        Get<TextBox>(window, "OfficialDailyName").Clear(); SetSource(editor, "");
         DoubleClick(commands, (DependencyObject)commands.ItemContainerGenerator.ContainerFromIndex(0));
         Get<ComboBox>(window, "SaveSlots").SelectedIndex = 5; Click(window, "插入语句");
         var insertedBeforeChecks = Source(editor);
+        commands.SelectedItem = "刷取每日材料";
+        SetSource(editor, "");
+        Click(window, "插入语句");
+        var farming = ScriptSyntax.Parse(Source(editor)).Single().Words;
+        Require(Get<StackPanel>(window, "FarmingParameters").IsVisible && farming.Length == 6
+            && farming[3] == "天空顶" && farming[4] == "地狱四" && farming[5] == "刷满", "刷材料表单插入完整账号/存档语句");
+        Require(Get<TextBlock>(window, "CommandHelp").Text.Contains("协议7", StringComparison.Ordinal)
+            && Get<TextBlock>(window, "CommandHelp").Text.Contains("首屏无材料", StringComparison.Ordinal), "刷关说明指出组件及条件限额要求");
+        var pendingFarming = new ScriptPlan { Version = 2, Source = Source(editor) };
+        pendingFarming.AccountBindings[Get<TextBox>(window, "AccountAlias").Text] = selected.Id;
+        try { await workspace.RunAsync(pendingFarming); throw new InvalidOperationException("未校准的刷关不应启动"); }
+        catch (NotSupportedException) { }
+        Require(executor.BeginCount == 0 && (await launcher.GetActiveProfileIdsAsync()).Count == 0, "未校准刷关在游戏和视觉启动前拒绝");
+        await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
+        Save(window, Path.Combine(output, "material-farming-editor.png"));
         commands.SelectedItem = "读取存档名称";
         SetSource(editor, "");
         editor.CaretPosition = editor.Document.ContentStart.GetInsertionPosition(LogicalDirection.Forward);
@@ -198,14 +244,23 @@ internal static class Program
         Save(window, Path.Combine(output, "script-editor-minimum.png"));
         Require(Get<Button>(window, "EditButton").IsVisible && Button(window, "运行方案").IsVisible, "最小窗口底部编辑与运行入口");
         Click(window, "运行方案"); await UntilAsync(() => executor.Entered.Task.IsCompleted && workspace.Coordinator.IsRunning);
+        Require(Get<Button>(window, "PauseButton").IsVisible && Get<Button>(window, "PauseButton").IsEnabled, "监控显示暂停入口");
+        Click(window, "暂停");
+        await UntilAsync(() => workspace.Coordinator.IsPaused && Get<Button>(window, "ContinueButton").IsEnabled);
+        Require(Get<TextBlock>(window, "RunIdentity").Text.Contains("手动暂停", StringComparison.Ordinal), "暂停状态不被旧校验提示覆盖");
+        Require(!Get<Button>(window, "PauseButton").IsEnabled, "手动暂停后只允许继续或停止");
+        Click(window, "继续");
+        await UntilAsync(() => !workspace.Coordinator.IsPaused);
         Save(window, Path.Combine(output, "script-running.png"));
         DoubleClick(editor, editor);
         editor.Document.Blocks.Add(new Paragraph(new Run("尚未完成的新语句")));
         Require(!Get<Button>(window, "StopButton").IsVisible && Get<Button>(window, "InsertButton").IsVisible, "编辑模式右下仅显示插入语句");
+        Require(!Get<Button>(window, "PauseButton").IsVisible && !Get<Button>(window, "ContinueButton").IsVisible, "编辑模式不显示运行控制");
         Click(window, "保存方案");
         await UntilAsync(() => Get<Grid>(window, "MonitorPanel").IsVisible);
         Require(workspace.Coordinator.IsRunning, "保存错误草稿不修改当前运行快照");
         Require(Get<Button>(window, "StopButton").IsVisible && !Get<Button>(window, "InsertButton").IsVisible, "监控模式同位置显示停止");
+        Require(Get<Button>(window, "PauseButton").IsVisible && Get<Button>(window, "ContinueButton").IsVisible, "暂停和继续属于监控栏");
         window.Close(); Require(!window.IsVisible && workspace.Coordinator.IsRunning, "隐藏不停止");
         window.Show(); executor.Hold.TrySetResult(); await UntilAsync(() => !workspace.Coordinator.IsRunning);
         Require(workspace.Coordinator.Updates.All(update => update.State == ScriptRunState.Completed), "运行仍按启动时的正确快照完成");

@@ -11,6 +11,54 @@ public sealed class AccountEditorTests : IDisposable
     private readonly string _path = Path.Combine(Path.GetTempPath(), $"bqtj-credential-test-{Guid.NewGuid():N}.db");
     private SqliteGameProfileRepository Repository => new(_path);
 
+    [Fact]
+    public async Task PresidentIsAccountWideAndCredentialEditsDoNotClearIt()
+    {
+        await Repository.InitializeAsync();
+        var id = await Repository.CreateAsync("虚构总统", "fake-president", "fake-password");
+        var stale = (await Repository.GetAsync(id))!;
+        Assert.False(stale.HasPresident);
+        await Repository.SaveAsync(id, "虚构总统", "fake-president", "", false, hasPresident: true);
+        await Repository.UpsertAsync(stale.MarkLaunched(DateTimeOffset.UtcNow));
+        Assert.True((await Repository.GetAsync(id))!.HasPresident);
+        Assert.True((await Repository.ListScriptAccountsAsync()).Single().HasPresident);
+        Assert.True((await Repository.ListAccountsAsync()).Single().HasPresident);
+        var transfer = new BqtjLauncher.Application.AccountTransferService(Repository);
+        var conflict = Assert.Single((await transfer.ImportAsync("改名 fake-president replacement")).Conflicts);
+        await transfer.ReplaceAsync(conflict, "改名", "fake-president", "replacement");
+        Assert.True((await Repository.GetAsync(id))!.HasPresident);
+        await Assert.ThrowsAsync<ArgumentException>(() => Repository.SaveAsync(id, "不应写入", "", "replacement", false, false));
+        Assert.True((await Repository.GetAsync(id))!.HasPresident);
+        await Repository.SaveAsync(id, "手动登录", "", "", true, false);
+        Assert.False((await Repository.GetAsync(id))!.HasPresident);
+        var manual = await Repository.CreateAsync("无凭据总统", "", "", true);
+        Assert.True((await Repository.GetAsync(manual))!.HasPresident);
+        Assert.Null(await Repository.ReadCredentialAsync(manual));
+    }
+
+    [Fact]
+    public async Task OriginalSchemaGainsTheDisabledPresidentDefaultWithoutLosingProfiles()
+    {
+        var old = GameProfile.Create("虚构旧记录", DateTimeOffset.UtcNow);
+        await using (var connection = new SqliteConnection($"Data Source={_path}"))
+        {
+            await connection.OpenAsync();
+            using var command = connection.CreateCommand();
+            command.CommandText = "CREATE TABLE game_profiles(id TEXT PRIMARY KEY,display_name TEXT,browser_profile_name TEXT,created_utc TEXT,last_launched_utc TEXT); INSERT INTO game_profiles VALUES($id,$name,$browser,$created,NULL)";
+            command.Parameters.AddWithValue("$id", old.Id.ToString("D"));
+            command.Parameters.AddWithValue("$name", old.DisplayName);
+            command.Parameters.AddWithValue("$browser", old.BrowserProfileName);
+            command.Parameters.AddWithValue("$created", old.CreatedAtUtc.ToString("O", System.Globalization.CultureInfo.InvariantCulture));
+            await command.ExecuteNonQueryAsync();
+        }
+        await Repository.InitializeAsync(); await Repository.InitializeAsync();
+        var restored = (await Repository.GetAsync(old.Id))!;
+        Assert.Equal(old.DisplayName, restored.DisplayName); Assert.False(restored.HasPresident);
+        await Repository.SaveAsync(old.Id, old.DisplayName, "", "", false, true);
+        await Repository.InitializeAsync();
+        Assert.True((await Repository.ListAsync()).Single().HasPresident);
+    }
+
     private async Task<GameProfile> CreateAsync(string name)
     {
         await Repository.InitializeAsync();

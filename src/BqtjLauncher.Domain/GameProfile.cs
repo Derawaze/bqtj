@@ -1,5 +1,6 @@
 namespace BqtjLauncher.Domain;
 
+/// <summary>本地账号身份及账号级权益；总统设置由所有存档共用，默认关闭。</summary>
 public sealed record GameProfile
 {
     private const int MaxDisplayNameLength = 40;
@@ -9,13 +10,15 @@ public sealed record GameProfile
         string displayName,
         string browserProfileName,
         DateTimeOffset createdAtUtc,
-        DateTimeOffset? lastLaunchedAtUtc)
+        DateTimeOffset? lastLaunchedAtUtc,
+        bool hasPresident = false)
     {
         Id = id;
         DisplayName = displayName;
         BrowserProfileName = browserProfileName;
         CreatedAtUtc = createdAtUtc;
         LastLaunchedAtUtc = lastLaunchedAtUtc;
+        HasPresident = hasPresident;
     }
 
     public Guid Id { get; }
@@ -23,6 +26,7 @@ public sealed record GameProfile
     public string DisplayName { get; private init; }
 
     public string BrowserProfileName { get; }
+    public bool HasPresident { get; }
 
     public DateTimeOffset CreatedAtUtc { get; }
 
@@ -44,7 +48,8 @@ public sealed record GameProfile
         string displayName,
         string browserProfileName,
         DateTimeOffset createdAtUtc,
-        DateTimeOffset? lastLaunchedAtUtc)
+        DateTimeOffset? lastLaunchedAtUtc,
+        bool hasPresident = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(browserProfileName);
 
@@ -53,7 +58,7 @@ public sealed record GameProfile
             NormalizeDisplayName(displayName),
             browserProfileName,
             createdAtUtc.ToUniversalTime(),
-            lastLaunchedAtUtc?.ToUniversalTime());
+            lastLaunchedAtUtc?.ToUniversalTime(), hasPresident);
     }
 
     public GameProfile Rename(string displayName) =>

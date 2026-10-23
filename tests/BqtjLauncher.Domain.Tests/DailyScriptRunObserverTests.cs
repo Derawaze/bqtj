@@ -8,6 +8,29 @@ public sealed class DailyScriptRunObserverTests
         => observer.Observe(TimeSpan.FromSeconds(time), TimeSpan.FromSeconds(time), new(done, total), saved, false);
 
     [Theory]
+    [InlineData(0)]
+    [InlineData(22)]
+    public void ProgressJumpingFromAnIncompleteFrameToCompletedCanFinish(int incomplete)
+    {
+        var observer = Create();
+        Feed(observer, 0, incomplete, 23);
+        Feed(observer, 1, 23, 23, true);
+        Feed(observer, 2, 23, 23, true);
+        Assert.Equal(DailyScriptCompletionState.VisualComplete, Feed(observer, 3, 23, 23, true).State);
+    }
+
+    [Fact]
+    public void PauseOrMissedOcrDoesNotEraseAnObservedIncompleteRun()
+    {
+        var observer = Create();
+        Feed(observer, 0, 21, 23);
+        observer.Observe(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1), null, false, false);
+        Feed(observer, 30, 23, 23, true);
+        Feed(observer, 31, 23, 23, true);
+        Assert.Equal(DailyScriptCompletionState.VisualComplete, Feed(observer, 32, 23, 23, true).State);
+    }
+
+    [Theory]
     [InlineData(22, true)]
     [InlineData(3, false)]
     public void StaticScenesCannotEstablishStart(int done, bool saved)
@@ -29,13 +52,13 @@ public sealed class DailyScriptRunObserverTests
     }
 
     [Fact]
-    public void GapOrMissingProgressBreaksStartEvidence()
+    public void ProgressAdvanceSurvivesGapsAndMissingFramesWithinTheSameRun()
     {
         var observer = Create();
         Feed(observer, 0, 1);
-        Assert.Equal(DailyScriptCompletionState.AwaitingStart, Feed(observer, 5, 2).State);
+        Assert.Equal(DailyScriptCompletionState.Running, Feed(observer, 5, 2).State);
         observer.Observe(TimeSpan.FromSeconds(6), TimeSpan.FromSeconds(6), null, false, false);
-        Assert.Equal(DailyScriptCompletionState.AwaitingStart, Feed(observer, 7, 3).State);
+        Assert.Equal(DailyScriptCompletionState.Running, Feed(observer, 7, 3).State);
     }
 
     [Fact]
@@ -67,10 +90,10 @@ public sealed class DailyScriptRunObserverTests
     }
 
     [Fact]
-    public void ReachingCompletionWithoutIntermediateAdvanceIsInsufficient()
+    public void SingleStepScriptCanEstablishProgressWhenItsOnlyStepCompletes()
     {
         var observer = Create();
         Feed(observer, 0, 0, 1);
-        Assert.Equal(DailyScriptCompletionState.AwaitingStart, Feed(observer, 1, 1, 1, true).State);
+        Assert.Equal(DailyScriptCompletionState.ConfirmingCompletion, Feed(observer, 1, 1, 1, true).State);
     }
 }

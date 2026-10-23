@@ -111,6 +111,7 @@ public sealed class ScriptWorkspace : IAsyncDisposable
                 return;
             }
             var preview = await CompileAsync(plan, allowSaveSelection: true);
+            Coordinator.ValidateCapabilities(preview);
             var pending = AccountDailyPlans.RequiredSelections(preview);
             if (pending.Count > 0)
             {
@@ -140,7 +141,11 @@ public sealed class ScriptWorkspace : IAsyncDisposable
                 Refresh();
             }
             preparation.Token.ThrowIfCancellationRequested();
-            await Coordinator.RunAsync(await CompileAsync(plan), preparation.Token);
+            var program = await CompileAsync(plan);
+            PreparationStage = "";
+            var running = Coordinator.RunAsync(program, preparation.Token);
+            Changed?.Invoke(this, EventArgs.Empty);
+            await running;
         }
         finally { _preparing = false; _preparationStop = null; PreparationStage = ""; Changed?.Invoke(this, EventArgs.Empty); }
     }

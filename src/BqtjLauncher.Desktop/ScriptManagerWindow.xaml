@@ -52,7 +52,7 @@
         </DockPanel>
         <Border Grid.Row="1" Background="#141B27" BorderBrush="#35455C" BorderThickness="1" CornerRadius="7" Padding="12,8" Margin="0,0,0,12">
             <StackPanel>
-                <TextBlock Text="“日常操作”会运行游戏内置「日常操作复制」；游戏窗口可以被遮挡，但不能最小化。语句说明见模板注释。" Foreground="{StaticResource MutedTextBrush}" FontSize="12" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                <TextBlock Text="日常默认优先运行游戏内「日常操作复制」，没有则用「日常操作」，也可指定名称。游戏窗口可以被遮挡，但不能最小化。" Foreground="{StaticResource MutedTextBrush}" FontSize="12" Margin="0,4,0,0" TextWrapping="Wrap"/>
             </StackPanel>
         </Border>
         <Grid Grid.Row="2">
@@ -128,9 +128,21 @@
                             <TextBox x:Name="SaveName" ToolTip="仅修改角色显示名称，不改变存档号" Margin="0,0,0,6"/>
                             <Button Content="校正名称" Click="CorrectName_Click" HorizontalAlignment="Left" Margin="0,0,0,12"/>
                             </StackPanel>
+                            <StackPanel x:Name="DailyParameters" Visibility="Collapsed">
+                                <TextBlock Text="游戏内脚本名（可选）" Margin="0,0,0,5"/>
+                                <TextBox x:Name="OfficialDailyName" ToolTip="留空：优先日常操作复制，其次日常操作；填写后只运行该名称" Margin="0,0,0,12"/>
+                            </StackPanel>
                             <StackPanel x:Name="CallParameters">
                             <TextBlock Text="已保存子方案" Margin="0,0,0,5"/>
                             <ComboBox x:Name="SubPlans" DisplayMemberPath="Name" Margin="0,0,0,10"/>
+                            </StackPanel>
+                            <StackPanel x:Name="FarmingParameters" Visibility="Collapsed">
+                                <TextBlock Text="刷取关卡（待实机校准）" Margin="0,0,0,5"/>
+                                <ComboBox x:Name="FarmingMap" SelectedIndex="0" Margin="0,0,0,6"><ComboBoxItem Content="天空顶"/></ComboBox>
+                                <TextBlock Text="难度（游戏显示原文）" Margin="0,0,0,5"/>
+                                <TextBox x:Name="FarmingDifficulty" Text="地狱四" Margin="0,0,0,6"/>
+                                <TextBlock Text="刷满 / 次数" Margin="0,0,0,5"/>
+                                <TextBox x:Name="FarmingTarget" Text="刷满" ToolTip="填刷满，或正整数次数，例如8次" Margin="0,0,0,10"/>
                             </StackPanel>
 
                             <Expander Header="全局常量 / 方案覆盖" IsExpanded="False" Foreground="#E8EDF5">
@@ -148,6 +160,8 @@
                     <!-- 编辑模式只显示插入；运行监控模式在同一位置显示停止。 -->
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Bottom">
                         <Button x:Name="InsertButton" Content="插入语句" Click="Insert_Click" Style="{StaticResource EditorPrimary}"/>
+                        <Button x:Name="PauseButton" Content="暂停" Width="64" Click="Pause_Click" Margin="0,0,6,0" Visibility="Collapsed"/>
+                        <Button x:Name="ContinueButton" Content="继续" Width="64" Click="Continue_Click" Margin="0,0,6,0" Visibility="Collapsed"/>
                         <Button x:Name="StopButton" Content="停止本次运行" Click="Stop_Click"/>
                     </StackPanel>
                     <Grid x:Name="MonitorPanel" Visibility="Collapsed" Margin="0,0,0,48">
@@ -163,7 +177,7 @@
                                 </StackPanel>
                             </Border></DataTemplate></ListBox.ItemTemplate>
                         </ListBox>
-                        <TextBlock Grid.Row="3" Text="此栏只显示本次快照。停止外部操作后，游戏内置脚本可能仍在运行。" TextWrapping="Wrap" Foreground="{StaticResource MutedTextBrush}" FontSize="12" Margin="0,12,0,10"/>
+                        <TextBlock Grid.Row="3" Text="暂停只停外部操作，继续后重新观察当前步骤；异常或停止后继续会重试未完成语句，次数计数也重新开始。已完成语句不重跑。游戏内置脚本和自动战斗可能仍在运行。" TextWrapping="Wrap" Foreground="{StaticResource MutedTextBrush}" FontSize="12" Margin="0,12,0,10"/>
 
                     </Grid>
                 </Grid>

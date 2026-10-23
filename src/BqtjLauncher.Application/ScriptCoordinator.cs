@@ -8,8 +8,15 @@ public sealed class ScriptCoordinator(LauncherModule launcher, IScriptExecutor e
 {
     private CancellationTokenSource? _stop;
     private Task _running = Task.CompletedTask;
+    private ScriptRunControl? _control;
+    private CompiledScript? _snapshot;
+    private readonly ConcurrentDictionary<int, bool> _completed = new();
+    private readonly ConcurrentDictionary<Guid, Guid> _knownSessions = new();
     private readonly ConcurrentDictionary<int, ScriptRunUpdate> _updates = new();
     public bool IsRunning => !_running.IsCompleted;
+    public bool IsPaused => IsRunning && _control?.IsPaused == true;
+    public bool CanPause => IsRunning && _control is not null && !IsPaused;
+    public bool CanContinue => IsPaused || !IsRunning && _snapshot is not null && _completed.Count < _snapshot.Commands.Count;
     public IReadOnlyList<ScriptRunUpdate> Updates => _updates.OrderBy(pair => pair.Key).Select(pair => pair.Value).ToArray();
     public event EventHandler? Changed;
     public event Action<Guid, IReadOnlyList<SaveSlot>>? SavesRead;
@@ -22,6 +29,7 @@ public sealed class ScriptCoordinator(LauncherModule launcher, IScriptExecutor e
         ScriptJson.Validate(plan);
         if (plan.ScriptId != definition.Id) throw new InvalidOperationException("方案对应的脚本不存在。");
         RunningName = plan.Name;
+        _snapshot = null; _control = null;
         var snapshot = ScriptJson.Clone(plan);
         var script = ScriptJson.Clone(definition);
         script.Directory = definition.Directory;
@@ -41,19 +49,53 @@ public sealed class ScriptCoordinator(LauncherModule launcher, IScriptExecutor e
     public Task RunAsync(CompiledScript program, CancellationToken token = default)
     {
         if (IsRunning) throw new InvalidOperationException("已有方案正在运行，请先停止本次运行。");
-        _stop?.Dispose(); _stop = CancellationTokenSource.CreateLinkedTokenSource(token);
+        ValidateCapabilities(program);
+        _snapshot = program; _completed.Clear(); _knownSessions.Clear(); _updates.Clear();
         RunningName = program.Name;
-        _updates.Clear();
-        foreach (var command in program.Commands) ReportCommand(command, ScriptRunState.Waiting, "等待执行");
+        return StartProgramAsync(program, token);
+    }
+
+    /// <summary>手动暂停保留调用栈；异常或停止后继续使用冻结快照，仅重试未完成语句。</summary>
+    public Task ContinueAsync(CancellationToken token = default)
+    {
+        if (IsPaused)
+        {
+            _control!.Resume();
+            foreach (var update in Updates.Where(update => update.Stage.StartsWith("手动暂停 · ", StringComparison.Ordinal)))
+                _updates[update.TaskIndex] = update with { State = ScriptRunState.Running, Stage = "继续当前语句，重新观察游戏画面" };
+            Changed?.Invoke(this, EventArgs.Empty);
+            return Task.CompletedTask;
+        }
+        if (!CanContinue) throw new InvalidOperationException("没有可继续的运行快照。");
+        ValidateCapabilities(_snapshot!);
+        return StartProgramAsync(_snapshot!, token);
+    }
+
+    public void Pause()
+    {
+        if (!CanPause) return;
+        _control!.Pause();
+        foreach (var update in Updates.Where(update => update.State == ScriptRunState.Running))
+            _updates[update.TaskIndex] = update with { State = ScriptRunState.Paused, Stage = "手动暂停 · " + update.Stage };
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    private Task StartProgramAsync(CompiledScript program, CancellationToken token)
+    {
+        _stop?.Dispose(); _stop = CancellationTokenSource.CreateLinkedTokenSource(token);
+        var stop = _stop;
+        var control = new ScriptRunControl(); _control = control;
+        foreach (var command in program.Commands.Where(command => !_completed.ContainsKey(command.Index)))
+            ReportCommand(command, ScriptRunState.Waiting, "等待执行；继续时重试本语句");
         _running = Task.Run(async () =>
         {
             try
             {
-                var runner = new ScriptProgramRunner(launcher, executor, ReportCommand,
-                    (profile, slots) => SavesRead?.Invoke(profile, slots));
-                await runner.RunAsync(program, _stop.Token).ConfigureAwait(false);
+                var runner = new ScriptProgramRunner(launcher, executor.ForRun(control), ReportCommand,
+                    (profile, slots) => SavesRead?.Invoke(profile, slots), control, _completed, _knownSessions);
+                await runner.RunAsync(program, stop.Token).ConfigureAwait(false);
             }
-            catch (OperationCanceledException) when (_stop.IsCancellationRequested)
+            catch (OperationCanceledException) when (stop.IsCancellationRequested)
             {
                 foreach (var command in program.Commands.Where(command => _updates[command.Index].State is ScriptRunState.Waiting or ScriptRunState.Running or ScriptRunState.Paused))
                     ReportCommand(command, ScriptRunState.Stopped, "本次运行已停止，游戏内置脚本可能仍在运行");
@@ -63,14 +105,26 @@ public sealed class ScriptCoordinator(LauncherModule launcher, IScriptExecutor e
                 foreach (var command in program.Commands.Where(command => _updates[command.Index].State == ScriptRunState.Waiting))
                     ReportCommand(command, ScriptRunState.Paused, "本语句未执行：" + error.Message);
             }
-            finally { Changed?.Invoke(this, EventArgs.Empty); }
+            finally { control.Resume(); }
         }, CancellationToken.None);
+        // 等任务真正结束再通知，界面此时才能启用断点继续。
+        _ = _running.ContinueWith(_ => Changed?.Invoke(this, EventArgs.Empty), CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
         Changed?.Invoke(this, EventArgs.Empty);
         return _running;
     }
 
+    /// <summary>缺少所需组件能力时，在准备和创建游戏前拒绝；草稿仍可保存、语法仍可校验。</summary>
+    public void ValidateCapabilities(CompiledScript program)
+    {
+        if (program.Commands.Any(command => command.Farming is not null) && !executor.SupportsDailyMaterialFarming)
+            throw new NotSupportedException(executor.DailyMaterialUnavailableReason);
+    }
+
     private void ReportCommand(ScriptCommand command, ScriptRunState state, string stage)
     {
+        if (_control?.IsPaused == true && state == ScriptRunState.Running)
+        { state = ScriptRunState.Paused; stage = "手动暂停 · " + stage; }
         _updates[command.Index] = new(command.Account.Id, command.Index, command.Label, state, stage);
         Changed?.Invoke(this, EventArgs.Empty);
     }

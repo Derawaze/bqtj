@@ -12,13 +12,13 @@ internal static class GreenScriptVision
     private static bool IsGreen(Color pixel) => pixel.G >= 70 && pixel.G - pixel.R >= 40 && pixel.G - pixel.B >= 35;
 
     /// <summary>标题OCR和像素必须属于同一帧，坐标以输入侧栏图片为原点；OCR勾字符本身不是证据。</summary>
-    public static OfficialCompletionVisualEvidence? FindCompletedHeader(Bitmap frame, IReadOnlyList<OcrLine> lines)
-        => FindCompletedHeader(frame, lines, out _);
+    public static OfficialCompletionVisualEvidence? FindCompletedHeader(Bitmap frame, IReadOnlyList<OcrLine> lines, string? scriptName = null)
+        => FindCompletedHeader(frame, lines, out _, scriptName);
 
     /// <summary>返回限定区域的形状统计，供只读现场回放使用；不读取账号或运行日志。</summary>
-    public static OfficialCompletionVisualEvidence? FindCompletedHeader(Bitmap frame, IReadOnlyList<OcrLine> lines, out string diagnostic)
+    public static OfficialCompletionVisualEvidence? FindCompletedHeader(Bitmap frame, IReadOnlyList<OcrLine> lines, out string diagnostic, string? scriptName = null)
     {
-        var candidates = lines.Where(line => DailyScriptProgressParser.Parse([line.Text]) is { } progress
+        var candidates = lines.Where(line => DailyScriptProgressParser.Parse([line.Text], scriptName) is { } progress
             && progress.Completed == progress.Total).ToArray();
         diagnostic = $"全完成标题候选{candidates.Length}个";
         if (candidates.Length != 1) return null;

@@ -1,0 +1,641 @@
+{
+  "version": 3,
+  "usage": "loot-recognition",
+  "globalPickup": [
+    "ancient-chest",
+    "legendary-chest",
+    "rare-chest"
+  ],
+  "profiles": [
+    {
+      "map": "天空顶",
+      "purpose": "daily-materials",
+      "sweep": {
+        "maxRiseMilliseconds": 1200,
+        "maxRightMilliseconds": 3500,
+        "rowSpacing": 38,
+        "pulseMilliseconds": 180,
+        "miniMap": {
+          "x": 831,
+          "y": 21,
+          "width": 74,
+          "height": 44
+        }
+      },
+      "search": {
+        "timeoutSeconds": 30,
+        "miniMap": {
+          "x": 810,
+          "y": 25,
+          "width": 116,
+          "height": 41
+        },
+        "legs": [
+          {
+            "keys": "WD",
+            "pulses": 6,
+            "milliseconds": 120,
+            "label": "右上刷怪点"
+          },
+          {
+            "keys": "SD",
+            "pulses": 6,
+            "milliseconds": 120,
+            "label": "从上方接近右侧刷怪点"
+          },
+          {
+            "keys": "D",
+            "pulses": 4,
+            "milliseconds": 120,
+            "label": "右侧刷怪点"
+          }
+        ]
+      },
+      "pickup": [
+        "cold-gem",
+        "guard-gem",
+        "hades-codex",
+        "blood-stone"
+      ],
+      "recognize": [
+        "cold-gem",
+        "guard-gem",
+        "hades-codex",
+        "super-stone",
+        "divine-stone",
+        "conversion-stone",
+        "blood-stone",
+        "life-catalyst",
+        "ancient-chest",
+        "legendary-chest",
+        "rare-chest",
+        "offhand-moon-spike",
+        "offhand-butcher",
+        "offhand-wolong-club",
+        "device-earthquake",
+        "device-endless-cannon",
+        "device-lightning-tower",
+        "device-global-electric",
+        "device-energy-shell",
+        "armor",
+        "weapon",
+        "voucher",
+        "ammo-box",
+        "health-potion"
+      ]
+    }
+  ],
+  "items": [
+    {
+      "id": "cold-gem",
+      "name": "冷冻宝石",
+      "kind": "ColdGem",
+      "image": "cold-gem.png",
+      "patterns": [
+        {
+          "image": "cold-gem.png",
+          "scales": [
+            0.65,
+            0.75,
+            0.85,
+            1.0
+          ],
+          "threshold": 0.88,
+          "masked": false
+        },
+        {
+          "image": "cold-body-battle.png",
+          "scales": [
+            0.85,
+            1.0
+          ],
+          "threshold": 0.88,
+          "masked": true
+        }
+      ],
+      "detector": "cold-crystal"
+    },
+    {
+      "id": "guard-gem",
+      "name": "守护宝石",
+      "kind": "GuardGem",
+      "image": "guard-gem.png",
+      "patterns": [
+        {
+          "image": "guard-gem.png",
+          "scales": [
+            0.65,
+            0.75,
+            0.85,
+            1.0
+          ],
+          "threshold": 0.88,
+          "masked": false
+        },
+        {
+          "image": "guard-body-battle.png",
+          "scales": [
+            1.0
+          ],
+          "threshold": 0.88,
+          "masked": true
+        },
+        {
+          "image": "guard-body-battle-soft.png",
+          "scales": [
+            1.0
+          ],
+          "threshold": 0.88,
+          "masked": true
+        },
+        {
+          "image": "guard-pile-battle.png",
+          "scales": [
+            1.0
+          ],
+          "threshold": 0.88,
+          "masked": true
+        },
+        {
+          "image": "guard-overlap-battle.png",
+          "scales": [
+            1.0
+          ],
+          "threshold": 0.88,
+          "masked": true
+        }
+      ]
+    },
+    {
+      "id": "hades-codex",
+      "name": "冥王图鉴",
+      "kind": "HadesCodex",
+      "image": "hades-codex.png",
+      "patterns": [
+        {
+          "image": "hades-codex.png",
+          "scales": [
+            0.65,
+            0.75,
+            0.85,
+            1.0
+          ],
+          "threshold": 0.88,
+          "masked": false
+        },
+        {
+          "image": "hades-face-battle.png",
+          "scales": [
+            1.0
+          ],
+          "threshold": 0.88,
+          "masked": true
+        },
+        {
+          "image": "hades-body-battle.png",
+          "scales": [
+            1.0
+          ],
+          "threshold": 0.88,
+          "masked": true
+        },
+        {
+          "image": "hades-body-battle-soft.png",
+          "scales": [
+            1.0
+          ],
+          "threshold": 0.88,
+          "masked": true
+        },
+        {
+          "image": "hades-overlap-battle.png",
+          "scales": [
+            1.0
+          ],
+          "threshold": 0.88,
+          "masked": true
+        }
+      ]
+    },
+    {
+      "id": "fire-gem",
+      "name": "火焰宝石",
+      "kind": "Material",
+      "image": "fire-gem.png",
+      "patterns": []
+    },
+    {
+      "id": "electric-gem",
+      "name": "电磁宝石",
+      "kind": "Material",
+      "image": "electric-gem.png",
+      "patterns": []
+    },
+    {
+      "id": "biochemical-gem",
+      "name": "生化宝石",
+      "kind": "Material",
+      "image": "biochemical-gem.png",
+      "patterns": []
+    },
+    {
+      "id": "super-stone",
+      "name": "超能石",
+      "kind": "SuperStone",
+      "image": "super-stone.png",
+      "patterns": [
+        {
+          "image": "super-stone.png",
+          "scales": [
+            0.65,
+            0.75,
+            0.85,
+            1.0
+          ],
+          "threshold": 0.88,
+          "masked": false
+        }
+      ]
+    },
+    {
+      "id": "divine-stone",
+      "name": "神能石",
+      "kind": "DivineStone",
+      "image": "divine-stone.png",
+      "patterns": [
+        {
+          "image": "divine-stone.png",
+          "scales": [
+            0.65,
+            0.75,
+            0.85,
+            1.0
+          ],
+          "threshold": 0.88,
+          "masked": false
+        }
+      ]
+    },
+    {
+      "id": "conversion-stone",
+      "name": "转化石",
+      "kind": "ConversionStone",
+      "image": "conversion-stone.png",
+      "patterns": [
+        {
+          "image": "conversion-stone.png",
+          "scales": [
+            0.65,
+            0.75,
+            0.85,
+            1.0
+          ],
+          "threshold": 0.88,
+          "masked": false
+        }
+      ]
+    },
+    {
+      "id": "blood-stone",
+      "name": "血石",
+      "kind": "BloodStone",
+      "image": "blood-stone.png",
+      "patterns": [
+        {
+          "image": "blood-stone.png",
+          "scales": [
+            0.65,
+            0.75,
+            0.85,
+            1.0
+          ],
+          "threshold": 0.88,
+          "masked": false
+        }
+      ]
+    },
+    {
+      "id": "life-catalyst",
+      "name": "生命催化剂",
+      "kind": "LifeCatalyst",
+      "image": "life-catalyst.png",
+      "patterns": [
+        {
+          "image": "life-catalyst.png",
+          "scales": [
+            0.65,
+            0.75,
+            0.85,
+            1.0
+          ],
+          "threshold": 0.88,
+          "masked": false
+        }
+      ]
+    },
+    {
+      "id": "ancient-chest",
+      "name": "远古宝箱",
+      "kind": "AncientChest",
+      "image": "ancient-chest.png",
+      "patterns": [
+        {
+          "image": "ancient-chest.png",
+          "scales": [
+            0.65,
+            0.75,
+            0.85,
+            1.0
+          ],
+          "threshold": 0.88,
+          "masked": false
+        }
+      ]
+    },
+    {
+      "id": "legendary-chest",
+      "name": "传奇宝箱",
+      "kind": "LegendaryChest",
+      "image": "legendary-chest.png",
+      "patterns": [
+        {
+          "image": "legendary-chest.png",
+          "scales": [
+            0.65,
+            0.75,
+            0.85,
+            1.0
+          ],
+          "threshold": 0.88,
+          "masked": false
+        }
+      ]
+    },
+    {
+      "id": "rare-chest",
+      "name": "稀有宝箱",
+      "kind": "RareChest",
+      "image": "rare-chest.png",
+      "patterns": [
+        {
+          "image": "rare-chest.png",
+          "scales": [
+            0.65,
+            0.75,
+            0.85,
+            1.0
+          ],
+          "threshold": 0.88,
+          "masked": false
+        }
+      ]
+    },
+    {
+      "id": "offhand-moon-spike",
+      "name": "月刺",
+      "kind": "Offhand",
+      "image": "offhand-moon-spike.png",
+      "patterns": [
+        {
+          "image": "offhand-moon-spike.png",
+          "scales": [
+            0.65,
+            0.75,
+            0.85,
+            1.0
+          ],
+          "threshold": 0.88,
+          "masked": false
+        }
+      ]
+    },
+    {
+      "id": "offhand-butcher",
+      "name": "屠夫",
+      "kind": "Offhand",
+      "image": "offhand-butcher.png",
+      "patterns": [
+        {
+          "image": "offhand-butcher.png",
+          "scales": [
+            0.65,
+            0.75,
+            0.85,
+            1.0
+          ],
+          "threshold": 0.88,
+          "masked": false
+        }
+      ]
+    },
+    {
+      "id": "offhand-wolong-club",
+      "name": "沃龙牌棍棒",
+      "kind": "Offhand",
+      "image": "offhand-wolong-club.png",
+      "patterns": [
+        {
+          "image": "offhand-wolong-club.png",
+          "scales": [
+            0.65,
+            0.75,
+            0.85,
+            1.0
+          ],
+          "threshold": 0.88,
+          "masked": false
+        }
+      ]
+    },
+    {
+      "id": "device-earthquake",
+      "name": "地震发生器",
+      "kind": "Device",
+      "image": "device-earthquake.png",
+      "patterns": [
+        {
+          "image": "device-earthquake.png",
+          "scales": [
+            0.65,
+            0.75,
+            0.85,
+            1.0
+          ],
+          "threshold": 0.88,
+          "masked": false
+        }
+      ]
+    },
+    {
+      "id": "device-endless-cannon",
+      "name": "无尽轰炮",
+      "kind": "Device",
+      "image": "device-endless-cannon.png",
+      "patterns": [
+        {
+          "image": "device-endless-cannon.png",
+          "scales": [
+            0.65,
+            0.75,
+            0.85,
+            1.0
+          ],
+          "threshold": 0.88,
+          "masked": false
+        }
+      ]
+    },
+    {
+      "id": "device-lightning-tower",
+      "name": "闪电塔",
+      "kind": "Device",
+      "image": "device-lightning-tower.png",
+      "patterns": [
+        {
+          "image": "device-lightning-tower.png",
+          "scales": [
+            0.65,
+            0.75,
+            0.85,
+            1.0
+          ],
+          "threshold": 0.88,
+          "masked": false
+        }
+      ]
+    },
+    {
+      "id": "device-global-electric",
+      "name": "全域电击器",
+      "kind": "Device",
+      "image": "device-global-electric.png",
+      "patterns": [
+        {
+          "image": "device-global-electric.png",
+          "scales": [
+            0.65,
+            0.75,
+            0.85,
+            1.0
+          ],
+          "threshold": 0.88,
+          "masked": false
+        }
+      ]
+    },
+    {
+      "id": "device-energy-shell",
+      "name": "能量外壳",
+      "kind": "Device",
+      "image": "device-energy-shell.png",
+      "patterns": [
+        {
+          "image": "device-energy-shell.png",
+          "scales": [
+            0.65,
+            0.75,
+            0.85,
+            1.0
+          ],
+          "threshold": 0.88,
+          "masked": false
+        }
+      ]
+    },
+    {
+      "id": "armor",
+      "name": "装备（上衣）",
+      "kind": "Equipment",
+      "image": "armor-body-battle.png",
+      "patterns": [
+        {
+          "image": "armor-body-battle.png",
+          "scales": [
+            1.0
+          ],
+          "threshold": 0.88,
+          "masked": true
+        }
+      ]
+    },
+    {
+      "id": "weapon",
+      "name": "武器（枪械）",
+      "kind": "Weapon",
+      "image": "weapon-gun-battle.png",
+      "patterns": [
+        {
+          "image": "weapon-gun-battle.png",
+          "scales": [
+            1.0,
+            0.95
+          ],
+          "threshold": 0.85,
+          "masked": true
+        }
+      ]
+    },
+    {
+      "id": "voucher",
+      "name": "商券",
+      "kind": "Voucher",
+      "image": "voucher-battle.png",
+      "patterns": [
+        {
+          "image": "voucher-battle.png",
+          "scales": [
+            1.0
+          ],
+          "threshold": 0.88,
+          "masked": true
+        }
+      ]
+    },
+    {
+      "id": "ammo-box",
+      "name": "弹药箱",
+      "kind": "AmmoBox",
+      "image": "ammo-box.png",
+      "patterns": [
+        {
+          "image": "ammo-box.png",
+          "scales": [
+            0.65,
+            0.75,
+            0.85,
+            1.0
+          ],
+          "threshold": 0.88,
+          "masked": false
+        },
+        {
+          "image": "ammo-box-battle.png",
+          "scales": [
+            1.0
+          ],
+          "threshold": 0.88,
+          "masked": true
+        }
+      ]
+    },
+    {
+      "id": "health-potion",
+      "name": "生命药瓶",
+      "kind": "HealthPotion",
+      "image": "health-potion.png",
+      "patterns": [
+        {
+          "image": "health-potion.png",
+          "scales": [
+            0.65,
+            0.75,
+            0.85,
+            1.0
+          ],
+          "threshold": 0.88,
+          "masked": false
+        }
+      ]
+    }
+  ]
+}

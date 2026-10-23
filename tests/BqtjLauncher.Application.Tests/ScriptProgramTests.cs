@@ -11,7 +11,73 @@ public sealed class ScriptProgramTests : IDisposable
     private readonly string _root = Path.Combine(Path.GetTempPath(), "bqtj-program-" + Guid.NewGuid().ToString("N"));
     private static ScriptPlan Plan(string source, string name = "测试方案") => new() { Version = 2, Name = name, Source = source };
     private static ScriptAccount Account(string name) => new(Guid.NewGuid(), name, "");
+    private static readonly bool[] ExpectedPresidentModes = [true, true, false];
     public ScriptProgramTests() => Directory.CreateDirectory(_root);
+
+    [Fact]
+    public async Task FarmingUsesTheFrozenAccountPresidentSettingForEverySave()
+    {
+        var fixture = await FixtureAsync(); await using var launcher = fixture.Launcher;
+        fixture.Accounts[0] = fixture.Accounts[0] with { HasPresident = true };
+        var program = Compile(Plan("刷取每日材料,甲,存档1,天空顶,地狱四,1次\n退出存档,甲\n刷取每日材料,甲,存档2,天空顶,地狱四,1次\n刷取每日材料,乙,存档1,天空顶,地狱四,1次"), fixture.Accounts);
+        fixture.Accounts[0] = fixture.Accounts[0] with { HasPresident = false };
+        var executor = new Executor { CanFarm = true };
+        await using var coordinator = new ScriptCoordinator(launcher, executor);
+        await coordinator.RunAsync(program);
+        Assert.Equal(ExpectedPresidentModes, executor.PresidentModes);
+    }
+
+    [Fact]
+    public void DailyCanSpecifyTheExactInGameScriptName()
+    {
+        var plan = Plan("日常操作,甲,存档5,$日常名");
+        plan.Constants["日常名"] = "我的日常";
+        var program = Compile(plan, [Account("甲")]);
+        Assert.Equal(5, Assert.Single(program.Commands).SaveNumber);
+        Assert.Equal("我的日常", program.Commands[0].OfficialScriptName);
+    }
+
+    [Fact]
+    public void FarmingSupportsExplicitBindingAndShortFormInSerialSaveContext()
+    {
+        var account = Account("甲");
+        var program = Compile(Plan("启动存档,甲,存档5\n刷取每日材料,天空顶,地狱四,刷满\n刷取每日材料,甲,存档6,天空顶,地狱四,12次"), [account]);
+        var inherited = program.Commands[1];
+        Assert.Equal(account.Id, inherited.Account.Id); Assert.Equal(5, inherited.SaveNumber);
+        Assert.Equal("天空顶", inherited.Farming!.Map); Assert.Null(inherited.Farming.Runs);
+        Assert.Equal(6, program.Commands[2].SaveNumber); Assert.Equal(12, program.Commands[2].Farming!.Runs);
+    }
+
+    [Theory]
+    [InlineData("刷取每日材料,天空顶,地狱四,刷满")]
+    [InlineData("启动存档,甲,存档1\n关闭窗口,甲\n刷取每日材料,天空顶,地狱四,刷满")]
+    [InlineData("并行开始\n启动存档,甲,存档1\n刷取每日材料,天空顶,地狱四,刷满\n并行结束")]
+    [InlineData("启动存档,甲,存档1\n并行开始\n读取存档名称,乙\n并行结束\n刷取每日材料,天空顶,地狱四,刷满")]
+    public void ShortFarmingRejectsAmbiguousOrParallelContext(string source)
+        => Assert.Throws<InvalidDataException>(() => Compile(Plan(source), [Account("甲"), Account("乙")]));
+
+    [Fact]
+    public void InheritedPendingSaveWritesOnlyTheOriginalSelectionStatement()
+    {
+        var account = Account("甲");
+        var plan = Plan("启动存档,甲,待选择存档\n刷取每日材料,天空顶,地狱四,刷满");
+        var preview = new ScriptProgramCompiler([], [account], []).Compile(plan, allowSaveSelection: true);
+        var selection = Assert.Single(AccountDailyPlans.RequiredSelections(preview));
+        Assert.Equal(1, Assert.Single(selection.Lines));
+        var configured = AccountDailyPlans.ApplySelection(plan, selection, 5);
+        Assert.EndsWith("刷取每日材料,天空顶,地狱四,刷满", configured.Source);
+        Assert.All(Compile(configured, [account]).Commands, command => Assert.Equal(5, command.SaveNumber));
+    }
+
+    [Fact]
+    public async Task UncalibratedFarmingFailsBeforeVisionOrGameStartup()
+    {
+        var f = await FixtureAsync(); await using var launcher = f.Launcher;
+        var executor = new Executor(); await using var coordinator = new ScriptCoordinator(launcher, executor);
+        var program = Compile(Plan("刷取每日材料,甲,存档1,天空顶,地狱四,刷满"), f.Accounts);
+        await Assert.ThrowsAsync<NotSupportedException>(() => coordinator.RunAsync(program));
+        Assert.Equal(0, executor.BeginCount); Assert.Empty(f.Runtime.Sessions);
+    }
 
     [Fact]
     public void QuotedChineseNamesAndEscapedQuotesKeepArgumentPositions()
@@ -174,6 +240,109 @@ public sealed class ScriptProgramTests : IDisposable
         Assert.Equal(2, f.Runtime.Sessions.Count); Assert.Equal(1, executor.ExitCount);
         Assert.All(f.Runtime.Sessions, session => { Assert.Equal(0, session.CloseCount); Assert.False(session.Locked); Assert.Equal(1m, session.Speed.Value); });
         Assert.Equal(1, executor.EndCount);
+    }
+
+    [Fact]
+    public async Task FollowingStatementClosesTheDailySystemPanelButLastDailyKeepsIt()
+    {
+        var f = await FixtureAsync(); await using var launcher = f.Launcher;
+        var executor = new Executor { CheckSystemPanel = true };
+        await using var coordinator = new ScriptCoordinator(launcher, executor);
+        await coordinator.RunAsync(Compile(Plan("日常操作,甲,存档5\n日常操作,甲,存档5"), f.Accounts));
+        Assert.All(coordinator.Updates, update => Assert.Equal(ScriptRunState.Completed, update.State));
+        Assert.Equal(2, executor.Dailies.Count);
+        Assert.Equal(1, executor.DismissCount);
+        Assert.True(executor.SystemPanels.ContainsKey(f.Accounts[0].Id));
+    }
+
+    [Theory]
+    [InlineData(5, 0)]
+    [InlineData(6, 1)]
+    public async Task DailyFinishesItsOwnPanelsOrSaveBeforeTheNextAccountRuns(int nextSave, int exits)
+    {
+        var f = await FixtureAsync(); await using var launcher = f.Launcher;
+        var executor = new Executor { CanFarm = true, CheckSystemPanel = true };
+        await using var coordinator = new ScriptCoordinator(launcher, executor);
+        var first = f.Accounts[0].Id;
+        executor.BeforeDaily = id =>
+        {
+            if (id == first) return;
+            Assert.False(executor.SystemPanels.ContainsKey(first));
+            Assert.Equal(exits, executor.ExitCount);
+            Assert.Equal(nextSave == 5, executor.ContinuationCleanups.Contains(first));
+        };
+        await coordinator.RunAsync(Compile(Plan($"日常操作,甲,存档5\n日常操作,乙,存档1\n刷取每日材料,甲,存档{nextSave},天空顶,地狱四,1次"), f.Accounts));
+        Assert.All(coordinator.Updates, update => Assert.Equal(ScriptRunState.Completed, update.State));
+    }
+
+    [Theory]
+    [InlineData(5, 0, 1)]
+    [InlineData(6, 1, 2)]
+    public async Task DailyAndFarmingReuseTheWindowAndOnlySwitchWhenTheirSaveNumbersDiffer(int farmingSave, int exits, int entries)
+    {
+        var f = await FixtureAsync(); await using var launcher = f.Launcher;
+        var executor = new Executor { CanFarm = true, CheckSystemPanel = true };
+        await using var coordinator = new ScriptCoordinator(launcher, executor);
+        await coordinator.RunAsync(Compile(Plan($"日常操作,甲,存档5\n刷取每日材料,甲,存档{farmingSave},天空顶,地狱四,1次"), f.Accounts));
+        Assert.All(coordinator.Updates, update => Assert.Equal(ScriptRunState.Completed, update.State));
+        Assert.Single(f.Runtime.Sessions);
+        Assert.Equal(0, f.Runtime.Sessions[0].CloseCount);
+        Assert.Equal(exits, executor.ExitCount);
+        Assert.Equal(entries, executor.EnteredSaves.Count);
+        Assert.Equal(farmingSave, Assert.Single(executor.Farms).Save);
+        Assert.Equal(farmingSave == 5 ? 1 : 0, executor.DismissCount);
+    }
+
+    [Fact]
+    public async Task ManualPauseRetainsCurrentStatementAndContinueDoesNotReplayCompletedCommands()
+    {
+        var f = await FixtureAsync(); await using var launcher = f.Launcher;
+        var executor = new Executor { Hold = new(TaskCreationOptions.RunContinuationsAsynchronously) };
+        await using var coordinator = new ScriptCoordinator(launcher, executor);
+        var running = coordinator.RunAsync(Compile(Plan("日常操作,甲,存档1\n关闭窗口,甲"), f.Accounts));
+        await executor.Entered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        coordinator.Pause(); executor.Hold.TrySetResult();
+        await Task.Delay(120);
+        Assert.True(coordinator.IsPaused); Assert.False(running.IsCompleted);
+        Assert.Equal(0, f.Runtime.Sessions[0].CloseCount);
+        await coordinator.ContinueAsync(); await running.WaitAsync(TimeSpan.FromSeconds(3));
+        Assert.Single(executor.Dailies); Assert.Equal(1, f.Runtime.Sessions[0].CloseCount);
+    }
+
+    [Fact]
+    public async Task StopWhileManuallyPausedReleasesResourcesAndContinueUsesTheSameSnapshot()
+    {
+        var f = await FixtureAsync(); await using var launcher = f.Launcher;
+        var executor = new Executor { Hold = new(TaskCreationOptions.RunContinuationsAsynchronously) };
+        await using var coordinator = new ScriptCoordinator(launcher, executor);
+        var running = coordinator.RunAsync(Compile(Plan("日常操作,甲,存档1\n关闭窗口,甲"), f.Accounts));
+        await executor.Entered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        coordinator.Pause(); executor.Hold.TrySetResult();
+        await Task.Delay(120);
+        coordinator.Stop(); await running.WaitAsync(TimeSpan.FromSeconds(3));
+        Assert.False(f.Runtime.Sessions[0].Locked); Assert.Equal(1m, f.Runtime.Sessions[0].Speed.Value);
+        Assert.True(coordinator.CanContinue);
+        await coordinator.ContinueAsync().WaitAsync(TimeSpan.FromSeconds(3));
+        Assert.Single(executor.Dailies); Assert.Single(f.Runtime.Sessions);
+        Assert.Equal(1, f.Runtime.Sessions[0].CloseCount);
+    }
+
+    [Fact]
+    public async Task RetrySkipsACompletedParallelBranchAndRetriesOnlyFailedStatements()
+    {
+        var f = await FixtureAsync(); await using var launcher = f.Launcher;
+        var executor = new Executor { Fail = f.Accounts[0].Id };
+        await using var coordinator = new ScriptCoordinator(launcher, executor);
+        var a = Plan("日常操作,甲,存档5\n关闭窗口,甲", "甲日常");
+        var b = Plan("日常操作,乙,存档1\n关闭窗口,乙", "乙日常");
+        await coordinator.RunAsync(Compile(Plan("并行开始\n调用,甲日常\n调用,乙日常\n并行结束"), f.Accounts, a, b));
+        executor.Fail = null;
+        await coordinator.ContinueAsync().WaitAsync(TimeSpan.FromSeconds(3));
+        Assert.Equal(2, executor.Dailies.Count(item => item.Account == f.Accounts[0].Id));
+        Assert.Single(executor.Dailies, item => item.Account == f.Accounts[1].Id);
+        Assert.Equal(2, f.Runtime.Sessions.Count);
+        Assert.All(coordinator.Updates, update => Assert.Equal(ScriptRunState.Completed, update.State));
+        Assert.All(f.Runtime.Sessions, session => Assert.Equal(1, session.CloseCount));
     }
 
     [Theory]
@@ -379,6 +548,28 @@ public sealed class ScriptProgramTests : IDisposable
     }
     private sealed class Executor : IScriptExecutor
     {
+        public bool CanFarm;
+        public bool SupportsDailyMaterialFarming => CanFarm;
+        public ConcurrentQueue<int> EnteredSaves { get; } = new();
+        public ConcurrentQueue<(Guid Account, int? Save)> Farms { get; } = new();
+        public ConcurrentQueue<bool> PresidentModes { get; } = new();
+        public Task FarmDailyMaterialsAsync(AutomationGameSession session, DailyMaterialFarmOptions options,
+            Action<string, ScriptRunState> stage, CancellationToken token)
+        {
+            if (CheckSystemPanel && SystemPanels.ContainsKey(session.ProfileId)) throw new InvalidOperationException("系统面板挡住地图");
+            Farms.Enqueue((session.ProfileId, session.CurrentSave));
+            PresidentModes.Enqueue(options.HasPresident);
+            return Task.CompletedTask;
+        }
+        public bool CheckSystemPanel;
+        public Action<Guid>? BeforeDaily;
+        public ConcurrentQueue<Guid> ContinuationCleanups { get; } = new();
+        public int DismissCount;
+        public ConcurrentDictionary<Guid, bool> SystemPanels { get; } = new();
+        public Task DismissSystemAsync(AutomationGameSession session, Action<string, ScriptRunState> stage, CancellationToken token)
+        { DismissCount++; SystemPanels.TryRemove(session.ProfileId, out _); return Task.CompletedTask; }
+        public Task DismissDailyPanelsAsync(AutomationGameSession session, Action<string, ScriptRunState> stage, CancellationToken token)
+        { ContinuationCleanups.Enqueue(session.ProfileId); return DismissSystemAsync(session, stage, token); }
         public ConcurrentQueue<(Guid Account, int Save)> Dailies { get; } = new();
         public int Barrier, Maximum, ExitCount, BeginCount, EndCount; public Guid? Fail;
         public decimal ScanSpeed; public TaskCompletionSource? Hold; public bool InSave;
@@ -391,7 +582,10 @@ public sealed class ScriptProgramTests : IDisposable
         public Task ReleaseAsync(AutomationGameSession session) => Task.CompletedTask;
         public async Task ExecuteAsync(AutomationGameSession session, ScriptDefinition definition, ScriptPlanTask task, SpeedMultiplier speed, Action<string, ScriptRunState> stage, CancellationToken token)
         {
+            if (definition.Flow[0].Type == "enterSave") EnteredSaves.Enqueue(task.SaveNumber);
             if (definition.Flow[0].Type != "runOfficialDaily") return;
+            BeforeDaily?.Invoke(session.ProfileId);
+            if (CheckSystemPanel && SystemPanels.ContainsKey(session.ProfileId)) throw new InvalidOperationException("系统面板挡住助理");
             Dailies.Enqueue((session.ProfileId, task.SaveNumber)); Entered.TrySetResult();
             if (Fail == session.ProfileId) throw new InvalidOperationException("虚构失败");
             lock (this) { _active++; Maximum = Math.Max(Maximum, _active); if (_active >= Barrier) _both.TrySetResult(); }
@@ -400,11 +594,12 @@ public sealed class ScriptProgramTests : IDisposable
                 if (Barrier > 0) await _both.Task.WaitAsync(token);
                 if (Hold is not null) await Hold.Task.WaitAsync(token);
                 await Task.Delay(40, token);
+                if (CheckSystemPanel) SystemPanels[session.ProfileId] = true;
             }
             finally { lock (this) _active--; }
         }
         public Task ExitSaveAsync(AutomationGameSession session, Action<string, ScriptRunState> stage, CancellationToken token)
-        { ExitCount++; return Task.CompletedTask; }
+        { ExitCount++; SystemPanels.TryRemove(session.ProfileId, out _); return Task.CompletedTask; }
         public Task<IReadOnlyList<SaveSlot>> ReadSavesAsync(AutomationGameSession session, Action<string> stage, CancellationToken token)
         { return ReadAsync(session, token); }
         private async Task<IReadOnlyList<SaveSlot>> ReadAsync(AutomationGameSession session, CancellationToken token)

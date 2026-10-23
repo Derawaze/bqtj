@@ -6,3 +6,4 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("ScriptCompletionProbe")]
 
 [assembly: InternalsVisibleTo("SaveNameProbe")]
+[assembly: InternalsVisibleTo("FarmingSceneProbe")]

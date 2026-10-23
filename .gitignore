@@ -14,6 +14,8 @@ coverage/
 .vs/
 .vscode/
 .idea/
+.nuget/
+.nuget/
 *.user
 *.suo
 *.userosscache
@@ -55,6 +57,12 @@ dist/
 *.log
 
 # OS files
+.script-delivery-version
 Thumbs.db
 Desktop.ini
 .DS_Store
+
+# 本机参考程序和项目外的数据处理文件，不进入源码或发行包。
+/*.exe
+/*.dll
+/军队memx/

@@ -5,6 +5,7 @@ using Microsoft.Data.Sqlite;
 
 namespace BqtjLauncher.Infrastructure;
 
+/// <summary>本地账号、权益及凭据的持久化入口；初始化事务兼容旧库结构。</summary>
 public sealed partial class SqliteGameProfileRepository : IGameProfileRepository, IAccountEditor
 {
     private readonly string _connectionString;
@@ -29,7 +30,9 @@ public sealed partial class SqliteGameProfileRepository : IGameProfileRepository
         Directory.CreateDirectory(Path.GetDirectoryName(DatabasePath)!);
 
         await using var connection = await OpenAsync(cancellationToken);
+        using var transaction = connection.BeginTransaction();
         await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
         command.CommandText =
             """
             CREATE TABLE IF NOT EXISTS game_profiles (
@@ -37,7 +40,8 @@ public sealed partial class SqliteGameProfileRepository : IGameProfileRepository
                 display_name TEXT NOT NULL,
                 browser_profile_name TEXT NOT NULL UNIQUE,
                 created_utc TEXT NOT NULL,
-                last_launched_utc TEXT NULL
+                last_launched_utc TEXT NULL,
+                has_president INTEGER NOT NULL DEFAULT 0
             );
             CREATE TABLE IF NOT EXISTS account_credentials (
                 account_id TEXT PRIMARY KEY NOT NULL REFERENCES game_profiles(id) ON DELETE CASCADE,
@@ -46,6 +50,14 @@ public sealed partial class SqliteGameProfileRepository : IGameProfileRepository
             );
             """;
         await command.ExecuteNonQueryAsync(cancellationToken);
+        // 检查与补列处于同一写事务，主面板和独立账号工具同时启动时只升级一次。
+        command.CommandText = "SELECT COUNT(*) FROM pragma_table_info('game_profiles') WHERE name = 'has_president'";
+        if (Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken), CultureInfo.InvariantCulture) == 0)
+        {
+            command.CommandText = "ALTER TABLE game_profiles ADD COLUMN has_president INTEGER NOT NULL DEFAULT 0";
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        transaction.Commit();
     }
 
     public async Task<IReadOnlyList<GameProfile>> ListAsync(
@@ -56,7 +68,7 @@ public sealed partial class SqliteGameProfileRepository : IGameProfileRepository
         await using var command = connection.CreateCommand();
         command.CommandText =
             """
-            SELECT id, display_name, browser_profile_name, created_utc, last_launched_utc
+            SELECT id, display_name, browser_profile_name, created_utc, last_launched_utc, has_president
             FROM game_profiles
             ORDER BY COALESCE(last_launched_utc, created_utc) DESC;
             """;
@@ -78,7 +90,7 @@ public sealed partial class SqliteGameProfileRepository : IGameProfileRepository
         await using var command = connection.CreateCommand();
         command.CommandText =
             """
-            SELECT id, display_name, browser_profile_name, created_utc, last_launched_utc
+            SELECT id, display_name, browser_profile_name, created_utc, last_launched_utc, has_president
             FROM game_profiles
             WHERE id = $id;
             """;
@@ -97,8 +109,8 @@ public sealed partial class SqliteGameProfileRepository : IGameProfileRepository
         command.CommandText =
             """
             INSERT INTO game_profiles (
-                id, display_name, browser_profile_name, created_utc, last_launched_utc)
-            VALUES ($id, $displayName, $browserProfileName, $createdUtc, $lastLaunchedUtc)
+                id, display_name, browser_profile_name, created_utc, last_launched_utc, has_president)
+            VALUES ($id, $displayName, $browserProfileName, $createdUtc, $lastLaunchedUtc, $hasPresident)
             ON CONFLICT(id) DO UPDATE SET
                 display_name = excluded.display_name,
                 browser_profile_name = excluded.browser_profile_name,
@@ -106,6 +118,8 @@ public sealed partial class SqliteGameProfileRepository : IGameProfileRepository
                 last_launched_utc = excluded.last_launched_utc;
             """;
         command.Parameters.AddWithValue("$id", profile.Id.ToString("D"));
+        // 已有记录的权益只由账号编辑入口修改；启动时间回写不能覆盖独立工具刚保存的设置。
+        command.Parameters.AddWithValue("$hasPresident", profile.HasPresident ? 1 : 0);
         command.Parameters.AddWithValue("$displayName", profile.DisplayName);
         command.Parameters.AddWithValue("$browserProfileName", profile.BrowserProfileName);
         command.Parameters.AddWithValue(
@@ -152,6 +166,6 @@ public sealed partial class SqliteGameProfileRepository : IGameProfileRepository
                 reader.GetString(3),
                 CultureInfo.InvariantCulture,
                 DateTimeStyles.RoundtripKind),
-            lastLaunched);
+            lastLaunched, reader.GetInt32(5) != 0);
     }
 }

@@ -295,6 +295,23 @@ public partial class AccountTransferWindow : Window
         }
     }
 
+    /// <summary>权益单独点选并原子保存；不依赖密码列显示，也不改变三字段导入格式。</summary>
+    private async void President_Click(object sender, RoutedEventArgs e)
+    {
+        var input = (CheckBox)sender;
+        var row = (AccountRow)input.DataContext;
+        if (_busy || !FinishEditing()) { input.IsChecked = row.HasPresident; return; }
+        var enabled = input.IsChecked == true;
+        SetBusy(true);
+        try
+        {
+            row.Update(await Task.Run(() => _service.SaveManagedAccountAsync(row.Snapshot with { HasPresident = enabled })));
+            Feedback.Text = "已保存总统设置，下次运行脚本生效。";
+        }
+        catch (Exception) { input.IsChecked = row.HasPresident; Feedback.Text = "总统设置未保存，请刷新后重试。"; }
+        finally { SetBusy(false); }
+    }
+
     private static T? FindAncestor<T>(DependencyObject? element) where T : DependencyObject
     {
         while (element is not null)
@@ -313,6 +330,7 @@ public partial class AccountTransferWindow : Window
         public string DisplayName { get; set; } = snapshot.DisplayName;
         public string Username { get; set; } = snapshot.Username;
         public string Password { get; set; } = snapshot.Password;
+        public bool HasPresident => Snapshot.HasPresident;
         public event PropertyChangedEventHandler? PropertyChanged;
         public void Update(SavedAccount account)
         {
@@ -323,6 +341,7 @@ public partial class AccountTransferWindow : Window
             PropertyChanged?.Invoke(this, new(nameof(DisplayName)));
             PropertyChanged?.Invoke(this, new(nameof(Username)));
             PropertyChanged?.Invoke(this, new(nameof(Password)));
+            PropertyChanged?.Invoke(this, new(nameof(HasPresident)));
         }
         public override string ToString() => "[账号管理行凭据已隐藏]";
     }

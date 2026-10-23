@@ -11,13 +11,13 @@ public sealed partial class SqliteGameProfileRepository : IScriptAccounts
         await using var connection = await OpenAsync(default);
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT p.id, p.display_name, COALESCE(c.username, '')
+            SELECT p.id, p.display_name, COALESCE(c.username, ''), p.has_president
             FROM game_profiles p LEFT JOIN account_credentials c ON c.account_id = p.id
             ORDER BY p.created_utc, p.id
             """;
         await using var reader = await command.ExecuteReaderAsync();
         while (await reader.ReadAsync())
-            result.Add(new(Guid.Parse(reader.GetString(0)), reader.GetString(1), reader.GetString(2)));
+            result.Add(new(Guid.Parse(reader.GetString(0)), reader.GetString(1), reader.GetString(2), reader.GetInt32(3) != 0));
         return result;
     }
 }

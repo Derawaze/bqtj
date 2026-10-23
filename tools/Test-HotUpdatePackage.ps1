@@ -42,6 +42,9 @@ $allowedFiles = @(
     'scripts/official-daily/script.json'
 )
 
+$repositoryRoot = Split-Path -Parent $PSScriptRoot
+$allowedFiles += @(Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'resources/automation/sky-top') -File | ForEach-Object { 'scripts/resources/loot/' + $_.Name })
+
 $archive = [System.IO.Compression.ZipFile]::OpenRead($resolvedArchivePath)
 try {
     $entries = @($archive.Entries)

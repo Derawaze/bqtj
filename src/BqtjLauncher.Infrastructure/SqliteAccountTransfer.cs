@@ -13,13 +13,13 @@ public sealed partial class SqliteGameProfileRepository : IAccountTransferStore
         await using var connection = await OpenAsync(default);
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT p.id, p.display_name, c.username, c.password
+            SELECT p.id, p.display_name, c.username, c.password, p.has_president
             FROM game_profiles p JOIN account_credentials c ON c.account_id = p.id
             ORDER BY p.created_utc, p.id
             """;
         await using var reader = await command.ExecuteReaderAsync();
         while (await reader.ReadAsync())
-            accounts.Add(new(Guid.Parse(reader.GetString(0)), reader.GetString(1), reader.GetString(2), reader.GetString(3)));
+            accounts.Add(new(Guid.Parse(reader.GetString(0)), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetInt32(4) != 0));
         return accounts;
     }
 
@@ -30,13 +30,13 @@ public sealed partial class SqliteGameProfileRepository : IAccountTransferStore
         await using var connection = await OpenAsync(default);
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT p.id, p.display_name, COALESCE(c.username, ''), COALESCE(c.password, '')
+            SELECT p.id, p.display_name, COALESCE(c.username, ''), COALESCE(c.password, ''), p.has_president
             FROM game_profiles p LEFT JOIN account_credentials c ON c.account_id = p.id
             ORDER BY p.created_utc, p.id
             """;
         await using var reader = await command.ExecuteReaderAsync();
         while (await reader.ReadAsync())
-            accounts.Add(new(Guid.Parse(reader.GetString(0)), reader.GetString(1), reader.GetString(2), reader.GetString(3)));
+            accounts.Add(new(Guid.Parse(reader.GetString(0)), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetInt32(4) != 0));
         return accounts;
     }
 

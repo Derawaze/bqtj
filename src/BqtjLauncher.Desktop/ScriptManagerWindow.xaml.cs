@@ -114,9 +114,12 @@ public partial class ScriptManagerWindow : Window, IDisposable
             if (SubPlans.Items.Count > 0) SubPlans.SelectedIndex = 0;
             ProgressList.ItemsSource = _workspace.Coordinator.Updates;
             RunIdentity.Text = string.IsNullOrEmpty(_workspace.Coordinator.RunningName) ? "尚未开始运行。保存后可点击运行方案。"
-                : $"本次快照：{_workspace.Coordinator.RunningName}\n" + (_workspace.Coordinator.IsRunning ? "执行中 · 编辑不会改变本次运行" : "本轮已结束 · 结果保留供查看");
+                : $"本次快照：{_workspace.Coordinator.RunningName}\n" + (_workspace.Coordinator.IsPaused ? "手动暂停 · 继续当前语句，已完成语句不重跑"
+                    : _workspace.Coordinator.IsRunning ? "执行中 · 编辑不会改变本次运行" : _workspace.Coordinator.CanContinue ? "运行已中断 · 可继续本次快照，重试未完成语句" : "本轮已结束 · 结果保留供查看");
             StartButton.IsEnabled = !_workspace.IsBusy;
             StopButton.IsEnabled = _workspace.IsBusy;
+            PauseButton.IsEnabled = _workspace.Coordinator.CanPause;
+            ContinueButton.IsEnabled = _workspace.Coordinator.CanContinue && (!_workspace.IsBusy || _workspace.Coordinator.IsPaused);
             if (!string.IsNullOrEmpty(_workspace.PreparationStage)) RunIdentity.Text = _workspace.PreparationStage;
             if (!string.IsNullOrEmpty(_workspace.PlanErrors)) Status.Text = _workspace.PlanErrors;
         }
@@ -216,6 +219,7 @@ public partial class ScriptManagerWindow : Window, IDisposable
         MonitorPanel.Visibility = _editing ? Visibility.Collapsed : Visibility.Visible;
         InsertButton.Visibility = CommandsPanel.Visibility;
         StopButton.Visibility = _editing ? Visibility.Collapsed : Visibility.Visible;
+        PauseButton.Visibility = ContinueButton.Visibility = StopButton.Visibility;
         SourceEditor.IsReadOnly = !_editing;
         PlanName.IsReadOnly = Speed.IsReadOnly = Concurrency.IsReadOnly = !_editing;
         SaveButton.IsEnabled = ValidateButton.IsEnabled = _plan.Version == 2;
@@ -397,6 +401,23 @@ public partial class ScriptManagerWindow : Window, IDisposable
         catch (Exception error) { ValidationText.Text = error.Message; Status.Text = "方案未启动：" + error.Message; }
     }
     private void Stop_Click(object sender, RoutedEventArgs args) { _workspace.Stop(); Status.Text = "停止外部操作；游戏内置脚本可能仍在运行。"; }
+    private void Pause_Click(object sender, RoutedEventArgs args)
+    {
+        _workspace.Coordinator.Pause();
+        Status.Text = "已暂停外部操作；游戏内置脚本和自动战斗可能仍在运行。点击继续可从当前步骤恢复。";
+    }
+    private async void Continue_Click(object sender, RoutedEventArgs args)
+    {
+        try
+        {
+            var continuing = _workspace.Coordinator.ContinueAsync();
+            Workspace_Changed(this, EventArgs.Empty);
+            Status.Text = "继续本次运行快照；已完成语句不重跑。";
+            await continuing;
+            Workspace_Changed(this, EventArgs.Empty);
+        }
+        catch (Exception error) { Status.Text = error.Message; }
+    }
     private void DeletePlan_Click(object sender, RoutedEventArgs args)
     {
         if (PlansList.SelectedItem is not ScriptPlan plan) return;
@@ -435,13 +456,16 @@ public partial class ScriptManagerWindow : Window, IDisposable
         if (CommandHelp is null) return;
         var operation = CommandsList.SelectedItem as string;
         AccountParameters.Visibility = operation is "调用" or "并行开始" ? Visibility.Collapsed : Visibility.Visible;
-        SaveParameters.Visibility = operation is "日常操作" or "启动存档" ? Visibility.Visible : Visibility.Collapsed;
+        SaveParameters.Visibility = operation is "日常操作" or "启动存档" or "刷取每日材料" ? Visibility.Visible : Visibility.Collapsed;
         CallParameters.Visibility = operation == "调用" ? Visibility.Visible : Visibility.Collapsed;
+        FarmingParameters.Visibility = operation == "刷取每日材料" ? Visibility.Visible : Visibility.Collapsed;
+        DailyParameters.Visibility = operation == "日常操作" ? Visibility.Visible : Visibility.Collapsed;
         CommandHelp.Text = operation switch
         {
-            "日常操作" => "进入指定存档，运行日常操作复制并等待自动保存；下一存档复用窗口。",
+            "日常操作" => "进入指定存档，优先运行日常操作复制，其次日常操作。可填写游戏内脚本名；完成仍需本次进度变化和标题绿勾，保存由游戏执行。",
             "读取存档名称" => "读取八档名称，临时二倍速，完成保留窗口供同次方案继续使用。",
             "启动存档" => "进入指定存档并保留，不自动启动日常。",
+            "刷取每日材料" => "天空顶正常模式，默认二倍速。战后N/W同时关闭AI并上升，黄点辅助判断到顶；W最多1.5秒。第8轮起且通关首屏无材料才查双限额。需协议7组件，当前供开发联调。",
             "退出存档" => "退出当前角色并确认，随后回到选档入口。",
             "关闭窗口" => "关闭本次运行已接管或创建的精确账号窗口。",
             "调用" => "插入已保存子方案；改名可选择同步全部引用。",
@@ -471,9 +495,14 @@ public partial class ScriptManagerWindow : Window, IDisposable
                 if (_plan.AccountBindings.TryGetValue(alias, out var previous) && previous != account.Id)
                     throw new InvalidDataException("此别名已绑定另一个账号，请使用不同别名。");
                 _plan.AccountBindings[alias] = account.Id;
-                line = operation is "日常操作" or "启动存档"
+                line = operation == "刷取每日材料"
+                    ? ScriptSyntax.Statement(operation, alias, "存档" + (((SaveChoice?)SaveSlots.SelectedItem)?.Number ?? 1),
+                        ((ComboBoxItem)FarmingMap.SelectedItem).Content.ToString()!, FarmingDifficulty.Text.Trim(), FarmingTarget.Text.Trim())
+                    : operation is "日常操作" or "启动存档"
                     ? ScriptSyntax.Statement(operation, alias, "存档" + (((SaveChoice?)SaveSlots.SelectedItem)?.Number ?? 1))
                     : ScriptSyntax.Statement(operation, alias);
+                if (operation == "日常操作" && !string.IsNullOrWhiteSpace(OfficialDailyName.Text))
+                    line += "," + ScriptSyntax.Quote(OfficialDailyName.Text.Trim());
             }
             // 空白行直接复用；已有内容的行在其后插入，避免拆开现有参数或留下多余空行。
             var paragraph = SourceEditor.CaretPosition.Paragraph;

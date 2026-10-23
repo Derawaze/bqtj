@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev, 'codex/**']
   pull_request:
   workflow_dispatch:
 
@@ -14,21 +14,38 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  workflow-lint:
-    name: Workflow syntax
+  repository:
+    name: Repository and docs
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    outputs:
+      product: ${{ steps.scope.outputs.product }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Check repository and choose verification scope
+        id: scope
+        shell: pwsh
+        env:
+          BASE_REVISION: ${{ github.event.pull_request.base.sha || github.event.before }}
+          FORCE_FULL: ${{ github.event_name == 'workflow_dispatch' }}
+        run: ./tools/Test-Repository.ps1 -BaseRevision $env:BASE_REVISION -FullVerification:($env:FORCE_FULL -eq 'true') -GitHubOutput $env:GITHUB_OUTPUT
 
       - name: Validate GitHub Actions workflows
+        if: steps.scope.outputs.workflow == 'true'
         uses: docker://rhysd/actionlint:1.7.7
 
   verify:
     name: Windows x86 verification
+    needs: repository
+    if: needs.repository.outputs.product == 'true'
     runs-on: windows-latest
     timeout-minutes: 30
+    env:
+      NUGET_PACKAGES: ${{ github.workspace }}/.nuget/packages
 
     steps:
       - name: Configure Git line endings
@@ -41,6 +58,22 @@ jobs:
         uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.NUGET_PACKAGES }}
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', 'Directory.Build.props', 'global.json') }}
+          restore-keys: ${{ runner.os }}-nuget-
+
+      - name: Cache pinned vision dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            artifacts/dev/automation/MAA-win-x86_64-v5.14.2.zip
+            artifacts/dev/automation/maa-5.14.2-win-x64
+            artifacts/dev/automation/ppocr-v4-zh-cn
+          key: ${{ runner.os }}-vision-${{ hashFiles('tools/Prepare-MaaFramework.ps1', 'tools/Prepare-MaaOcr.ps1', 'tools/maa-ocr-models.json') }}
 
       - name: Set up 32-bit MinGW
         id: msys2
@@ -55,17 +88,6 @@ jobs:
 
       - name: Verify managed formatting
         run: dotnet format BqtjLauncher.sln --verify-no-changes --no-restore --verbosity minimal
-
-      - name: Reject tracked build output and private state
-        shell: pwsh
-        run: |
-          $forbiddenPattern = '(^|/)(artifacts|bin|obj|TestResults|coverage|logs|data|profiles|\.local)(/|$)|\.(exe|dll|pdb|zip|db|db-shm|db-wal|sqlite|sqlite3|sqlite-shm|sqlite-wal|dmp|etl|trace|log|pfx|p12|snk|pem|key)$|(^|/)\.env(\..+)?$|\.secrets\.json$'
-          # 虚构环境模板可以公开；账号库、运行日志与本机密钥不能进入 Git。
-          $forbidden = @(git ls-files | Where-Object { $_ -match $forbiddenPattern -and $_ -ne '.env.example' })
-          if ($forbidden.Count -gt 0) {
-            $forbidden | ForEach-Object { Write-Error "不应提交的生成或私有文件：$_" }
-            throw '仓库包含生成产物或本地私有状态。'
-          }
 
       - name: Test managed modules
         run: dotnet test BqtjLauncher.sln --configuration Release --no-restore --verbosity normal

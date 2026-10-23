@@ -1,3 +1,4 @@
+using System.IO;
 using BqtjLauncher.Runtime.Flash;
 
 namespace BqtjLauncher.Application.Tests;
@@ -5,6 +6,24 @@ namespace BqtjLauncher.Application.Tests;
 /// <summary>整体完成依据标题左侧独立绿勾，排除OCR装饰、其他行的绿勾及错误形状。</summary>
 public sealed class OfficialCompletionVisionTests
 {
+    [Fact]
+    public void CustomOfficialTitleStillRequiresTheSameGreenCheckGeometry()
+    {
+        using var image = new Bitmap(Path.Combine(AppContext.BaseDirectory, "Fixtures", "official-completed-header.png"));
+        OcrLine[] lines = [new("√我的日常23/23", new(27, 16, 122, 17), .95)];
+        Assert.NotNull(GreenScriptVision.FindCompletedHeader(image, lines, "我的日常"));
+        Assert.Null(GreenScriptVision.FindCompletedHeader(image, lines, "日常操作复制"));
+    }
+    [Theory]
+    [InlineData(27, 16, 122, 17)]
+    [InlineData(33, 15, 116, 17)]
+    public void ActualCompletedHeaderWorksWithBothObservedOcrBounds(int x, int y, int width, int height)
+    {
+        // 只保留公共脚本标题和勾号，不包含账号名或用户完整画面。
+        using var image = new Bitmap(Path.Combine(AppContext.BaseDirectory, "Fixtures", "official-completed-header.png"));
+        Assert.NotNull(GreenScriptVision.FindCompletedHeader(image,
+            [new("√日常操作复制23/23", new(x, y, width, height), .95)]));
+    }
     [Theory]
     [InlineData("check", true)]
     [InlineData("slash", false)]

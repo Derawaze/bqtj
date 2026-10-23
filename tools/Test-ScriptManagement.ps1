@@ -11,6 +11,7 @@ if (-not $UiOnly) {
     if (-not $Compiler64Path) { $Compiler64Path = $env:BQTJ_MINGW64_GXX }
     if (-not $Compiler64Path) { $Compiler64Path = (Get-Command g++ -ErrorAction Stop).Source }
     if (-not $ComponentDirectory) { $ComponentDirectory = Join-Path $repositoryRoot 'artifacts/dev/components/automation' }
+    $ComponentDirectory = [IO.Path]::GetFullPath($ComponentDirectory)
     & (Join-Path $PSScriptRoot 'Build-ScriptComponent.ps1') -Compiler64Path $Compiler64Path -OutputDirectory $ComponentDirectory
     $nativeProbe = Join-Path $repositoryRoot 'artifacts/dev/probes/script-vision/ScriptVisionProbe.exe'
     New-Item -ItemType Directory -Path (Split-Path $nativeProbe -Parent) -Force | Out-Null

@@ -31,4 +31,16 @@ public sealed class DailyScriptProgressParserTests
     [Fact]
     public void DoesNotCombineFragmentsFromDifferentLines()
         => Assert.Null(DailyScriptProgressParser.Parse(["日常操作复制", "22/22"]));
+
+    [Fact]
+    public void DefaultDailyNameAlsoHasAnExactProgressHeader()
+        => Assert.Equal(new DailyScriptProgress(23, 23), DailyScriptProgressParser.Parse(["√日常操作23/23"]));
+
+    [Fact]
+    public void CustomNameDoesNotAcceptThePreviousDailyTitleOrARegexPrefix()
+    {
+        Assert.Equal(new DailyScriptProgress(23, 23), DailyScriptProgressParser.Parse(["√我的日常(1)23/23"], "我的日常(1)"));
+        Assert.Null(DailyScriptProgressParser.Parse(["√日常操作复制23/23"], "我的日常(1)"));
+        Assert.Null(DailyScriptProgressParser.Parse(["√我的日常123/23"], "我的日常(1)"));
+    }
 }

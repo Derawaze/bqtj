@@ -3,6 +3,8 @@
   <ItemGroup>
     <ProjectReference Include="..\BqtjLauncher.Domain\BqtjLauncher.Domain.csproj" />
     <ProjectReference Include="..\BqtjLauncher.Application\BqtjLauncher.Application.csproj" />
+    <!-- 视觉图标及关卡规则随scripts交付，更新数据无需重新编译主程序。 -->
+    <Content Include="..\..\resources\automation\sky-top\*" Link="scripts\resources\loot\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
   </ItemGroup>
 
   <PropertyGroup>
