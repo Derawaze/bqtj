@@ -58,7 +58,7 @@ NativeCookieSessionProbe按stage/ready协议等待启动，测试本地HTTP与�
 
 ## 脚本开发与验证
 
-脚本初版59a3c9b保留在codex/script-management，后续开发基线按用户要求推送develop，源自dev/a6246f8；只选择性迁入Maa的会话、视觉和完成判定，不恢复旧四账号上限或旧缩放实现。
+脚本初版59a3c9b保留在codex/script-management，后续开发基线按用户要求推送dev，源自dev/a6246f8；只选择性迁入Maa的会话、视觉和完成判定，不恢复旧四账号上限或旧缩放实现。
 
 运行 ./tools/Test-ScriptManagement.ps1 -Compiler64Path <x64-g++路径>，准备固定Maa 5.14.2及PP-OCRv4模型，构建CPU原生组件、执行自有窗口的后台识字/模板/点击/身份/尺寸/退出检查，再运行真实WPF脚本管理窗口和托管原生协议回归。中间输出只在artifacts/dev/probes。没有生产App、账号库或游戏加载；虚构库和图片不得交付。
 
@@ -117,7 +117,7 @@ dotnet restore src/BqtjLauncher.Desktop/BqtjLauncher.Desktop.csproj -r win-x86 -
 
 ## CI与提交前检查
 
-CI在main、dev、develop及codex/*分支推送、PR和手动触发时运行。所有改动先在Linux检查Git清单和Markdown相对链接，拒绝生成包、账号库、日志及密钥进入源码。只有产品源码、测试、原生代码、非文档资源/工具或构建配置变化才进入Windows验证；纯文档不安装.NET、MinGW或视觉依赖。工作流变动另跑actionlint，手动运行强制完整验证。
+CI在main、dev及codex/*分支推送、PR和手动触发时运行。所有改动先在Linux检查Git清单和Markdown相对链接，拒绝生成包、账号库、日志及密钥进入源码。只有产品源码、测试、原生代码、非文档资源/工具或构建配置变化才进入Windows验证；纯文档不安装.NET、MinGW或视觉依赖。工作流变动另跑actionlint，手动运行强制完整验证。
 
 Windows仍串行执行格式、全量.NET测试、命令恢复、账号/脚本窗口及视觉夹具，再生成开发ZIP。NuGet包和固定Maa/OCR依赖分别缓存，运行会话、用户配置和现场不缓存。重复推送取消旧运行；开发包保留7天，正式发布门槛不变。
 
