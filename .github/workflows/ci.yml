@@ -89,8 +89,12 @@ jobs:
       - name: Verify managed formatting
         run: dotnet format BqtjLauncher.sln --verify-no-changes --no-restore --verbosity minimal
 
+      # 真窗口启动检查使用独立testhost，避免与退出夹具共享WPF进程级状态。
+      - name: Test WPF startup in a fresh process
+        run: dotnet test tests/BqtjLauncher.Application.Tests/BqtjLauncher.Application.Tests.csproj --configuration Release --no-restore --filter FullyQualifiedName~GameWindowStartupDisplayTests --verbosity normal
+
       - name: Test managed modules
-        run: dotnet test BqtjLauncher.sln --configuration Release --no-restore --verbosity normal
+        run: dotnet test BqtjLauncher.sln --configuration Release --no-restore --filter FullyQualifiedName!~GameWindowStartupDisplayTests --verbosity normal
 
       - name: Verify native command recovery
         env:

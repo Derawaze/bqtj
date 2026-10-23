@@ -17,6 +17,7 @@ public sealed class GameWindowStartupDisplayTests
         bool expectedActivation)
     {
         var completed = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var phase = "等待STA线程";
         var thread = new Thread(() =>
         {
             Window? window = null;
@@ -24,6 +25,7 @@ public sealed class GameWindowStartupDisplayTests
             {
                 try
                 {
+                    Volatile.Write(ref phase, "创建窗口");
                     window = new Window
                     {
                         WindowStyle = WindowStyle.None,
@@ -33,7 +35,9 @@ public sealed class GameWindowStartupDisplayTests
                         Height = 100,
                     };
                     // 执行 App 中使用的同一个首次显示操作，而非只断言一份布尔计算副本。
+                    Volatile.Write(ref phase, "首次显示");
                     GameWindowStartupDisplay.ShowLoading(window);
+                    Volatile.Write(ref phase, "检查窗口状态");
                     Assert.True(window.IsVisible);
                     Assert.Equal(initialState, window.WindowState);
                     Assert.Equal(0, window.Opacity);
@@ -41,7 +45,9 @@ public sealed class GameWindowStartupDisplayTests
                 }
                 finally
                 {
+                    Volatile.Write(ref phase, "关闭窗口");
                     window?.Close();
+                    Volatile.Write(ref phase, "关闭Dispatcher");
                     Dispatcher.CurrentDispatcher.InvokeShutdown();
                 }
                 // 下一档必须等前一档的窗口和消息分发器清理完毕，避免跨 STA 线程重叠。
@@ -53,6 +59,11 @@ public sealed class GameWindowStartupDisplayTests
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
         // 此处验证显示行为，不限制共享 CI 主机的 WPF 冷启动耗时；仍保留有限挂死等待。
-        await completed.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        try { await completed.Task.WaitAsync(TimeSpan.FromSeconds(30)); }
+        catch (TimeoutException error)
+        {
+            // 保留固定阶段即可定位CI挂起位置，不记录桌面内容，也不放宽原有显示断言。
+            throw new TimeoutException("WPF首次显示夹具超时，阶段：" + Volatile.Read(ref phase), error);
+        }
     }
 }
